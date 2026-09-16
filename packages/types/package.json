@@ -1,0 +1,24 @@
+{
+  "name": "@daih/types",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared TypeScript types and DTOs for DAIH platform",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit",
+    "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\""
+  },
+  "devDependencies": {
+    "@daih/config": "workspace:*",
+    "typescript": "^5.8.2"
+  }
+}

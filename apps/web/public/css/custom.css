@@ -1,0 +1,975 @@
+/* ==========================================================
+   DAIH Custom Overrides (safe, modern, structured)
+   - Put this file AFTER style.css
+   - Fixes spacing, pointer typos, header/menu polish, cards
+   ========================================================== */
+
+/* ----------------------------
+   Theme variables (easy edits)
+----------------------------- */
+:root {
+  --bg: #fefbfe;
+  --text: #404040;
+  --text-dark: #222;
+  --border: rgba(0, 0, 0, 0.12);
+
+  --primary: #220563; /* DAIH Deep Indigo/Blue */
+  --primary-rgb: 34, 5, 99;
+
+  --radius: 14px;
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.1);
+
+  --section-pad: 80px;
+  --section-pad-sm: 52px;
+}
+
+/* ----------------------------
+   Global cleanup / fixes
+----------------------------- */
+html {
+  background: var(--bg);
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+}
+
+/* FIX: your file contains "poInter" typos */
+#menu-btn,
+.arrow-up,
+.arrow-down,
+.d-btn-close,
+#closeCookieConsent,
+.dropdown span,
+.expand-custom .toggle,
+.owl-arrow,
+.nav-prev:before,
+.nav-next:before,
+.nav-exit:before,
+.prev-slider,
+.next-slider {
+  cursor: pointer !important;
+}
+
+/* FIX: your file contains "poInter-events" typo */
+.isotope-hidden.isotope-item {
+  pointer-events: none;
+}
+
+/* Make links consistent */
+a {
+  color: inherit;
+}
+a:hover {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+/* Header logo sizing */
+#logo img.header-logo-img,
+#logo img.logo,
+#logo img.logo-2 {
+  width: auto !important;
+  object-fit: contain !important;
+  display: inline-block;
+  transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+@media (min-width: 992px) {
+  /* Default desktop logo (reduced by 10% to 50px) */
+  #logo img.header-logo-img,
+  #logo img.logo,
+  #logo img.logo-2 {
+    height: 50px !important;
+    max-height: 50px !important;
+  }
+
+  /* When sitting on the carousel on homepage, logo is increased by 50% (50px * 1.50 = 76px) */
+  header.desktop-header-top #logo img.header-logo-img,
+  header.desktop-header-top #logo img.logo {
+    height: 76px !important;
+    max-height: 76px !important;
+  }
+
+  /* When scrolled, returns to original desktop shape/size (50px) */
+  header.desktop-header-scrolled #logo img.header-logo-img,
+  header.desktop-header-scrolled #logo img.logo-2,
+  header.is-scrolled #logo img.header-logo-img,
+  header.is-scrolled #logo img.logo-2 {
+    height: 50px !important;
+    max-height: 50px !important;
+  }
+}
+
+@media (max-width: 991.98px) {
+  /* Mobile logo (reduced by 10% to 50px) */
+  #logo img.header-logo-img,
+  #logo img.logo,
+  #logo img.logo-2 {
+    height: 50px !important;
+    max-height: 50px !important;
+  }
+}
+
+/* ----------------------------
+   Layout spacing (prevents "floating")
+----------------------------- */
+/* Your theme forces big padding on BOTH #content and section.
+   This override makes pages more consistent. */
+#content {
+  padding: 0 !important; /* let sections control spacing */
+  background: var(--bg);
+}
+
+/* Default section spacing */
+section {
+  padding: var(--section-pad) 0;
+  background: var(--bg);
+}
+
+@media (max-width: 767.98px) {
+  section {
+    padding: var(--section-pad-sm) 0;
+  }
+}
+
+/* Utilities that already exist in your theme, reinforced */
+.no-top {
+  padding-top: 0 !important;
+}
+.no-bottom {
+  padding-bottom: 0 !important;
+}
+
+/* ----------------------------
+   Subheader (hero) improvements
+----------------------------- */
+#subheader {
+  padding: 90px 0 90px 0;
+  position: relative;
+  overflow: hidden;
+}
+
+#subheader .center-y {
+  display: flex;
+  align-items: center;
+  min-height: 240px;
+}
+
+#subheader h1 {
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+/* ----------------------------
+   Ã¢â‚¬Å“Spaces AvailableÃ¢â‚¬Â grid improvements
+----------------------------- */
+#section-result .spacer-40 {
+  height: 24px;
+} /* tighten */
+
+.de-card {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  background: #fff;
+}
+
+.de-card .de-image {
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.de-card .de-image img {
+  width: 100%;
+  height: 230px;
+  object-fit: cover;
+  display: block;
+}
+
+.de-card .text {
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  padding: 22px;
+}
+
+.de-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+}
+
+.de-card .text h4 {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-dark);
+}
+
+/* Ratings spacing */
+.de-card .de-rating {
+  margin-bottom: 10px;
+}
+
+/* Features list in cards: make it look neat */
+.ul-style-3 {
+  margin: 10px 0 16px;
+  padding: 0;
+  list-style: none;
+}
+.ul-style-3 li {
+  display: inline-block;
+  margin: 0;
+  padding: 0;
+  font-size: 14px;
+  opacity: 0.95;
+}
+.ul-style-3 li:after {
+  content: "Ã¢â‚¬Â¢";
+  margin: 0 8px;
+  opacity: 0.55;
+}
+.ul-style-3 li:last-child:after {
+  content: "";
+  margin: 0;
+}
+
+/* Price block: cleaner */
+.de-card .d-price,
+.de-card .de-price {
+  background: rgba(0, 0, 0, 0.04);
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+
+.de-card .d-price span {
+  font-weight: 900;
+  font-size: 18px;
+  display: inline-block;
+  margin-top: 3px;
+}
+
+/* If you want the currency to stand out */
+.de-card .d-price span {
+  color: rgb(var(--primary-rgb));
+}
+
+/* ----------------------------
+   Buttons
+----------------------------- */
+.btn-main,
+a.btn-main {
+  background: var(--primary) !important;
+  color: #fff !important;
+  border-radius: 999px !important;
+  padding: 12px 18px !important;
+  font-weight: 800 !important;
+  box-shadow: 0 10px 22px rgba(var(--primary-rgb), 0.25);
+}
+
+.btn-main:hover,
+a.btn-main:hover {
+  filter: brightness(0.95);
+  transform: translateY(-1px);
+}
+
+/* ----------------------------
+   Footer cleanup
+----------------------------- */
+footer.footer-light {
+  background: var(--bg) !important;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+footer.footer-light h5 {
+  color: var(--text-dark) !important;
+  font-weight: 800;
+}
+footer.footer-light a:hover {
+  color: var(--primary);
+}
+
+/* ----------------------------
+   Mobile improvements & Header Overhaul (Matching Screenshot)
+----------------------------- */
+@media (min-width: 992px) {
+  .mobile-header-actions {
+    display: none !important;
+  }
+  .mobile-subnav-row {
+    display: none !important;
+  }
+  .mobile-menu-cta-item {
+    display: none !important;
+  }
+  .desktop-nav-link {
+    display: inline-flex !important;
+    align-items: center !important;
+  }
+
+  /* Navbar container width: reduced by 10% */
+  header .container {
+    width: 90% !important;
+    max-width: 1026px !important; /* 10% reduced from standard 1140px Bootstrap container */
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  #mainmenu > li > a {
+    padding-left: 15px !important;
+    padding-right: 15px !important;
+  }
+
+  /* Desktop Header Book A Space Button: reduced by 10% */
+  header a.header-book-btn,
+  header a.btn-main.header-book-btn {
+    padding: 11px 18px !important;
+    font-size: 13px !important;
+    line-height: 1.2 !important;
+    border-radius: 6px !important;
+  }
+
+  header a.header-book-btn i,
+  header a.btn-main.header-book-btn i {
+    display: inline-block !important;
+    font-size: 12px !important;
+    margin-right: 6px !important;
+  }
+
+  .desktop-dropdown-chevron {
+    margin-left: 6px !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+    transition: transform 0.25s ease, stroke 0.2s ease, color 0.2s ease !important;
+  }
+
+  #mainmenu li:hover .desktop-dropdown-chevron {
+    transform: rotate(180deg) !important;
+  }
+
+  /* Desktop Homepage Header at Top (Transparent, sits on carousel, white text) */
+  header.desktop-header-top {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-bottom: none !important;
+    z-index: 1001 !important;
+    transition: background-color 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease !important;
+  }
+
+  header.desktop-header-top #logo img.logo {
+    display: inline-block !important;
+  }
+
+  header.desktop-header-top #logo img.logo-2 {
+    display: none !important;
+  }
+
+  header.desktop-header-top #mainmenu > li > a {
+    color: #ffffff !important;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45) !important;
+    transition: color 0.2s ease, opacity 0.2s ease !important;
+  }
+
+  header.desktop-header-top #mainmenu > li > a:hover {
+    color: rgba(255, 255, 255, 0.88) !important;
+  }
+
+  header.desktop-header-top #mainmenu .desktop-dropdown-chevron {
+    color: #ffffff !important;
+    stroke: #ffffff !important;
+  }
+
+  header.desktop-header-top #mainmenu li:hover .desktop-dropdown-chevron {
+    color: rgba(255, 255, 255, 0.88) !important;
+    stroke: rgba(255, 255, 255, 0.88) !important;
+  }
+
+  header.desktop-header-top #mainmenu > li > a span {
+    border-bottom-color: #ffffff !important;
+  }
+
+  /* Desktop Header on Scroll (Solid white background, black text) */
+  header.desktop-header-scrolled,
+  header.is-scrolled {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+    z-index: 1001 !important;
+    transition: background-color 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease !important;
+  }
+
+  header.desktop-header-scrolled #logo img.logo,
+  header.is-scrolled #logo img.logo {
+    display: none !important;
+  }
+
+  header.desktop-header-scrolled #logo img.logo-2,
+  header.is-scrolled #logo img.logo-2 {
+    display: inline-block !important;
+  }
+
+  header.desktop-header-scrolled #mainmenu > li > a,
+  header.is-scrolled #mainmenu > li > a {
+    color: #111827 !important;
+    text-shadow: none !important;
+    transition: color 0.2s ease !important;
+  }
+
+  header.desktop-header-scrolled #mainmenu > li > a:hover,
+  header.is-scrolled #mainmenu > li > a:hover {
+    color: var(--primary, #220563) !important;
+  }
+
+  header.desktop-header-scrolled #mainmenu .desktop-dropdown-chevron,
+  header.is-scrolled #mainmenu .desktop-dropdown-chevron {
+    color: #111827 !important;
+    stroke: #111827 !important;
+  }
+
+  header.desktop-header-scrolled #mainmenu li:hover .desktop-dropdown-chevron,
+  header.is-scrolled #mainmenu li:hover .desktop-dropdown-chevron {
+    color: var(--primary, #220563) !important;
+    stroke: var(--primary, #220563) !important;
+  }
+
+  header.desktop-header-scrolled #mainmenu > li > a span,
+  header.is-scrolled #mainmenu > li > a span {
+    border-bottom-color: var(--primary, #220563) !important;
+  }
+
+  #mainmenu li ul.subnav-dropdown {
+    position: absolute !important;
+    top: 100% !important;
+    left: 0 !important;
+    min-width: 210px !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    border-radius: 8px !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12) !important;
+    border: 1px solid rgba(0, 0, 0, 0.05) !important;
+    padding: 8px 0 !important;
+    margin: 0 !important;
+    list-style: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    transition: opacity 0.2s ease, visibility 0.2s ease, transform 0.2s ease !important;
+    transform: translateY(6px);
+    z-index: 1000 !important;
+  }
+
+  #mainmenu li:hover > ul.subnav-dropdown {
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: block !important;
+    transform: translateY(0);
+  }
+
+  #mainmenu li ul.subnav-dropdown li {
+    display: block !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    float: none !important;
+  }
+
+  #mainmenu li ul.subnav-dropdown li a {
+    display: block !important;
+    padding: 9px 20px !important;
+    font-size: 14px !important;
+    color: #4b5563 !important;
+    text-shadow: none !important;
+    text-align: left !important;
+    font-weight: 500 !important;
+    transition: color 0.15s ease, background-color 0.15s ease !important;
+    white-space: nowrap !important;
+  }
+
+  #mainmenu li ul.subnav-dropdown li a:hover {
+    color: var(--primary) !important;
+    background: rgba(var(--primary-rgb), 0.04) !important;
+  }
+}
+
+@media (max-width: 991.98px) {
+  /* 1. Header and Action Buttons on Mobile */
+  .menu_side_area .header-book-btn {
+    display: none !important;
+  }
+
+  #menu-btn {
+    display: none !important;
+  }
+
+  .mobile-header-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+
+  .mobile-header-cal-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    background: #1c0754 !important;
+    border-radius: 4px !important;
+    border: none !important;
+    outline: none !important;
+    text-decoration: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    cursor: pointer !important;
+    transition: opacity 0.2s ease !important;
+  }
+
+  .mobile-header-cal-btn svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .mobile-header-cal-btn:hover {
+    opacity: 0.88 !important;
+  }
+
+  .mobile-header-hamburger-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    background: #5d17eb !important;
+    border-radius: 4px !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    cursor: pointer !important;
+    transition: opacity 0.2s ease !important;
+  }
+
+  .mobile-header-hamburger-btn svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .mobile-header-hamburger-btn:hover {
+    opacity: 0.88 !important;
+  }
+
+  /* 2. Mobile Dropdown Menu Container (#mainmenu) */
+  #mainmenu {
+    display: none !important;
+    position: absolute !important;
+    top: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    padding: 4px 0 10px 0 !important;
+    border-top: 1px solid #f0f2f5 !important;
+    border-bottom: 1px solid #f0f2f5 !important;
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.08) !important;
+    z-index: 99999 !important;
+    float: none !important;
+    margin: 0 !important;
+    list-style: none !important;
+  }
+
+  #mainmenu.open {
+    display: block !important;
+    animation: deFadeInDown 0.2s ease-out !important;
+  }
+
+  /* Remove all conflicting shadows, borders, and margins */
+  #mainmenu,
+  #mainmenu ul,
+  #mainmenu li,
+  #mainmenu .subnav-dropdown {
+    box-shadow: none !important;
+    -webkit-box-shadow: none !important;
+  }
+
+  /* 3. Each Mobile Nav Row (regular nav links) */
+  #mainmenu > li:not(.mobile-menu-cta-item) {
+    display: block !important;
+    width: 100% !important;
+    float: none !important;
+    border-bottom: 1px solid #f0f2f5 !important;
+    border-top: none !important;
+    border-left: none !important;
+    border-right: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+  }
+
+  #mainmenu > li:not(.mobile-menu-cta-item) > a {
+    display: block !important;
+    padding: 13px 20px !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    color: #4b5563 !important;
+    text-align: left !important;
+    text-decoration: none !important;
+    background: transparent !important;
+    border: none !important;
+    transition: color 0.15s ease !important;
+  }
+
+  #mainmenu > li:not(.mobile-menu-cta-item) > a:hover {
+    color: var(--primary) !important;
+  }
+
+  /* Desktop links hidden on mobile */
+  .desktop-nav-link {
+    display: none !important;
+  }
+
+  /* Mobile Subnav Row with Text on Left and Chevron on Right */
+  .mobile-subnav-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    padding: 13px 20px !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    color: #4b5563 !important;
+    text-align: left !important;
+    cursor: pointer !important;
+    user-select: none !important;
+    background: transparent !important;
+    transition: color 0.15s ease !important;
+    -webkit-tap-highlight-color: transparent !important;
+  }
+
+  .mobile-subnav-row:hover {
+    color: var(--primary) !important;
+  }
+
+  .mobile-subnav-chevron {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: #9ca3af !important;
+    transition: transform 0.25s ease, color 0.2s ease !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .mobile-subnav-chevron.rotated {
+    transform: rotate(180deg) !important;
+    color: var(--primary) !important;
+  }
+
+  /* 4. Subnav Dropdown (Expanded items) */
+  #mainmenu ul.subnav-dropdown {
+    display: none !important;
+    position: static !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #f8fafc !important;
+    padding: 4px 0 8px 0 !important;
+    margin: 0 !important;
+    list-style: none !important;
+  }
+
+  #mainmenu ul.subnav-dropdown.is-open {
+    display: block !important;
+    animation: deFadeInDown 0.18s ease-out !important;
+  }
+
+  #mainmenu ul.subnav-dropdown li {
+    display: block !important;
+    width: 100% !important;
+    border-bottom: 1px solid #edf2f7 !important;
+    border-top: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  #mainmenu ul.subnav-dropdown li:last-child {
+    border-bottom: none !important;
+  }
+
+  #mainmenu ul.subnav-dropdown li a {
+    display: block !important;
+    padding: 10px 20px 10px 32px !important;
+    font-size: 14px !important;
+    color: #64748b !important;
+    font-weight: 500 !important;
+    text-align: left !important;
+    border: none !important;
+    box-shadow: none !important;
+    text-decoration: none !important;
+    transition: color 0.15s ease, background 0.15s ease !important;
+  }
+
+  #mainmenu ul.subnav-dropdown li a:hover {
+    color: var(--primary) !important;
+    background: rgba(var(--primary-rgb), 0.04) !important;
+  }
+
+  /* 5. Mobile Menu CTA: Book A Space Button */
+  #mainmenu > li.mobile-menu-cta-item,
+  .mobile-menu-cta-item {
+    display: block !important;
+    width: 100% !important;
+    border: none !important;
+    border-bottom: none !important;
+    border-top: none !important;
+    padding: 16px 20px 12px 20px !important;
+    margin: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    float: none !important;
+    text-align: center !important;
+  }
+
+  #mainmenu > li.mobile-menu-cta-item > a.mobile-menu-book-btn,
+  #mainmenu a.mobile-menu-book-btn,
+  .mobile-menu-book-btn {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    background: var(--primary, #220563) !important;
+    background-color: var(--primary, #220563) !important;
+    color: #ffffff !important;
+    padding: 11px 18px !important;
+    border-radius: 999px !important;
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    text-decoration: none !important;
+    text-align: center !important;
+    box-shadow: 0 4px 16px rgba(34, 5, 99, 0.35) !important;
+    border: none !important;
+    cursor: pointer !important;
+    line-height: normal !important;
+    margin: 0 auto !important;
+    transition: transform 0.2s ease, opacity 0.2s ease, background-color 0.2s ease !important;
+  }
+
+  #mainmenu > li.mobile-menu-cta-item > a.mobile-menu-book-btn:hover,
+  #mainmenu a.mobile-menu-book-btn:hover,
+  .mobile-menu-book-btn:hover {
+    background: #1a034d !important;
+    background-color: #1a034d !important;
+    color: #ffffff !important;
+    opacity: 0.95 !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 20px rgba(34, 5, 99, 0.45) !important;
+  }
+
+  #mainmenu > li.mobile-menu-cta-item > a.mobile-menu-book-btn .mobile-cta-content,
+  .mobile-menu-book-btn .mobile-cta-content {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 auto !important;
+    text-align: center !important;
+    color: #ffffff !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+  }
+
+  #mainmenu > li.mobile-menu-cta-item > a.mobile-menu-book-btn i,
+  .mobile-menu-book-btn i {
+    display: inline-block !important;
+    margin-right: 8px !important;
+    color: #ffffff !important;
+    font-size: 15px !important;
+    line-height: 1 !important;
+    vertical-align: middle !important;
+  }
+
+  /* 6. Suppress unwanted pseudo-elements and spans */
+  #mainmenu li:after,
+  #mainmenu li:before,
+  #mainmenu li a:after,
+  #mainmenu li a:before,
+  #mainmenu li.has-child:after,
+  #mainmenu li.menu-item-has-children:after,
+  #mainmenu li.menu-item-has-children > a:after {
+    display: none !important;
+    content: none !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  #mainmenu a span:not(.mobile-book-label) {
+    display: none !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Header container on Mobile */
+  header {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    position: relative !important;
+    overflow: visible !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04) !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+  }
+
+  header #logo img.logo {
+    display: none !important;
+  }
+
+  header #logo img.logo-2 {
+    display: inline-block !important;
+  }
+
+  header .container {
+    position: relative !important;
+  }
+
+  header.header-light,
+  header.mobile-menu-active {
+    background: #ffffff !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04) !important;
+  }
+
+  .menu_side_area {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    margin-left: 0 !important;
+  }
+
+  .de-card .de-image img {
+    height: 200px;
+  }
+
+  #subheader {
+    padding: 70px 0;
+  }
+}
+
+/* 4. Full Width "Select Your Plan" on Small Screens */
+@media (max-width: 767.98px) {
+  #section-pricing {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  #section-pricing .container {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  #section-pricing .row {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  #section-pricing .col-12,
+  #section-pricing .col-md-6,
+  #section-pricing .col-lg-4 {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 0 0 100% !important;
+  }
+
+  .pricing-s1 {
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    border-radius: 16px !important;
+    box-shadow: var(--shadow-md) !important;
+  }
+
+  .pricing-s1 .action .btn-main {
+    width: 100% !important;
+    display: block !important;
+    text-align: center !important;
+  }
+}
+
+/* 5. "View All Plans & Facilities" Button Responsive Polish */
+.btn-view-all-plans {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 14px 32px !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  border-radius: 999px !important;
+  box-shadow: 0 8px 24px rgba(var(--primary-rgb), 0.22) !important;
+  text-decoration: none !important;
+  line-height: 1.3 !important;
+  transition: all 0.25s ease !important;
+  max-width: 100% !important;
+}
+
+.btn-view-all-plans:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 12px 28px rgba(var(--primary-rgb), 0.32) !important;
+}
+
+@media (max-width: 575.98px) {
+  .btn-view-all-plans {
+    display: flex !important;
+    width: 100% !important;
+    max-width: 320px !important;
+    margin: 0 auto !important;
+    padding: 13px 18px !important;
+    font-size: 14px !important;
+    border-radius: 14px !important; /* Elegant modern radius to prevent distorted pill shape on mobile wrap */
+    text-align: center !important;
+    white-space: normal !important;
+  }
+}
+
+@keyframes deFadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* -------------------------------------------------------
+   Suppress the FontAwesome dropdown arrow that
+   designesia.js injects via .has-child::after — this
+   duplicates the custom SVG chevron already in the JSX.
+------------------------------------------------------- */
+#mainmenu li.has-child::after,
+#mainmenu li.has-child:after,
+header.smaller.scroll-light #mainmenu li.has-child::after,
+header.smaller.scroll-light #mainmenu li.has-child:after,
+.header-light #mainmenu li.has-child::after,
+.header-light #mainmenu li.has-child:after {
+  display: none !important;
+  content: none !important;
+}

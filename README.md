@@ -1,109 +1,104 @@
-# The Dare Adeboye Innovation Hub (DAIH)
+# The Dare Adeboye Innovation Hub (DAIH) — Workspace Platform Monorepo
 
-Official static website for The Dare Adeboye Innovation Hub, a coworking and innovation space in Redemption City, Ogun State. The site presents available workspaces, events, gallery content, career information, and contact details for visitors who want to book or learn more about DAIH.
+The **DAIH Workspace Platform** is a unified digital workspace management platform for The Dare Adeboye Innovation Hub in Redemption City, Ogun State.
 
-## Live Site
+This repository is structured as a **modular monorepo** managed with `pnpm` workspaces and `turborepo`.
 
-Production: https://daih-vert.vercel.app
+---
 
-## Project Overview
-
-This repository contains a static HTML, CSS, and JavaScript website. It does not require a frontend build step, package manager, or server-side framework to render the main pages.
-
-Core pages include:
-
-- Home page: `DAIH-main/index.html`
-- Workspace listings: `DAIH-main/our-plans.html`
-- Dedicated desk: `DAIH-main/dedicated-desk.html`
-- Hot desk: `DAIH-main/hot-desk.html`
-- Office suite: `DAIH-main/office-suite.html`
-- Conference hall: `DAIH-main/conference-hall.html`
-- Training room: `DAIH-main/training-room.html`
-- About: `DAIH-main/about-us.html`
-- Events: `DAIH-main/events.html`
-- Gallery: `DAIH-main/gallery.html`
-- Jobs: `DAIH-main/jobs.html`
-- Contact: `DAIH-main/contact.html`
-
-## Clean URL Handling
-
-The site is configured for clean, extensionless URLs on Vercel. Visitors should see routes like:
-
-- `/hot-desk`
-- `/events`
-- `/contact`
-
-instead of:
-
-- `/hot-desk.html`
-- `/events.html`
-- `/contact.html`
-
-This is handled in two places:
-
-1. `DAIH-main/vercel.json` enables `cleanUrls`, which lets Vercel serve `page.html` files through `/page` routes and redirect `.html` requests to the clean route.
-2. `trailingSlash` is set to `false`, keeping route formatting consistent as `/hot-desk` rather than `/hot-desk/`.
-
-Internal navigation links in the HTML files also point to the clean routes, so users do not keep landing on `.html` URLs while browsing the site.
-
-## Folder Structure
+## 1. Monorepo Structure
 
 ```text
-.
-├── README.md
-├── DAIH-main/
-│   ├── index.html
-│   ├── about-us.html
-│   ├── contact.html
-│   ├── events.html
-│   ├── our-plans.html
-│   ├── vercel.json
-│   ├── css/
-│   ├── fonts/
-│   ├── images/
-│   └── js/
-└── pinegrow.json
+daih-platform/
+├── apps/
+│   ├── web/              # Public marketing site (Next.js App Router)
+│   ├── customer-pwa/     # Customer-facing PWA (Auth, Bookings, Payments, QR Check-in)
+│   ├── reception-app/    # Reception & Security scanner app (QR Token verification)
+│   ├── admin-portal/     # Operations, Finance & Super Admin portals
+│   └── api/              # Modular Monolith Express API (PostgreSQL, Prisma, BullMQ, Redis)
+├── packages/
+│   ├── api-client/       # Typed HTTP client shared across frontends
+│   ├── ui/               # Shared design system components & primitives
+│   ├── config/           # Shared TypeScript & Tailwind configurations
+│   └── types/            # Shared DTOs, Enums, Roles & RBAC definitions
+├── infra/
+│   └── docker/           # Docker Compose for PostgreSQL, Redis, MinIO
+├── docs/                 # Architecture, TDD, Milestone Plans, and ADRs
+└── .github/
+    └── workflows/        # GitHub Actions CI/CD pipelines
 ```
 
-## Local Preview
+---
 
-Because this is a static site, you can open `DAIH-main/index.html` directly in a browser for a quick preview.
+## 2. Prerequisites
 
-For a closer production-like preview with local routing, run a simple static server from the `DAIH-main` folder:
+- **Node.js**: `v20.x` or higher
+- **pnpm**: `v10.x` (`npm install -g pnpm`)
+- **Docker**: For local PostgreSQL, Redis, and MinIO instances
+
+---
+
+## 3. Quickstart & Local Setup
+
+### 1. Clone & Install Dependencies
 
 ```bash
+git clone <repo-url>
 cd DAIH-main
-python3 -m http.server 3000
+pnpm install
 ```
 
-Then visit:
+### 2. Configure Environment Variables
 
-```text
-http://localhost:3000
+Copy `.env.example` to `.env`:
+
+```bash
+cp .env.example .env
 ```
 
-Note that Vercel clean URL redirects are applied after deployment, not by Python's basic local server.
+### 3. Start Local Infrastructure (Postgres, Redis, MinIO)
 
-## Deployment
+```bash
+docker compose -f infra/docker/docker-compose.yml up -d
+```
 
-The project is intended to deploy on Vercel as a static site. If Vercel is configured with `DAIH-main` as the project root, it will use `DAIH-main/vercel.json` automatically.
+### 4. Initialize Database & Seed
 
-Recommended Vercel settings:
+```bash
+pnpm --filter @daih/api prisma:generate
+pnpm --filter @daih/api prisma:migrate
+pnpm --filter @daih/api exec tsx src/scripts/seed-super-admin.ts
+```
 
-- Framework preset: Other
-- Root directory: `DAIH-main`
-- Build command: leave empty
-- Output directory: leave empty
+### 5. Run Development Servers
 
-## Contact Details Displayed on the Site
+```bash
+# Run all apps in parallel
+pnpm dev
 
-- Location: Abiona Street By House of Favour, Main Gate, Obafemi Owode LGA, Redemption City, Ogun State
-- Phone: 07042504389
-- Email: dareadeboyeinnovationhub@gmail.com
+# Or run a specific application:
+pnpm --filter @daih/api dev           # API (Port 4000)
+pnpm --filter @daih/customer-pwa dev  # Customer PWA (Port 3001)
+pnpm --filter @daih/web dev           # Public Site (Port 3000)
+pnpm --filter @daih/admin-portal dev  # Admin Portal (Port 3003)
+pnpm --filter @daih/reception-app dev # Reception App (Port 3002)
+```
 
-## Maintenance Notes
+---
 
-- Keep all internal page links extensionless, for example `/events` instead of `events.html`.
-- Add new static pages as `.html` files inside `DAIH-main`.
-- When adding a new page, include it in navigation and update `DAIH-main/vercel.json` only if custom redirect behavior is needed.
-- Keep image assets inside `DAIH-main/images`, CSS inside `DAIH-main/css`, and scripts inside `DAIH-main/js`.
+## 4. Common Scripts
+
+- `pnpm build`: Build all packages and applications
+- `pnpm dev`: Start development servers with hot-reload
+- `pnpm typecheck`: Run TypeScript compiler checks across all workspaces
+- `pnpm test`: Run automated unit and integration test suites
+
+---
+
+## 5. Security & RBAC Model
+
+The platform enforces strict Role-Based Access Control (RBAC):
+
+- **Roles:** `CUSTOMER`, `RECEPTION_OFFICER`, `SECURITY_OFFICER`, `OPERATIONS_ADMIN`, `FINANCE_OFFICER`, `MANAGEMENT_VIEWER`, `SUPER_ADMIN`.
+- **Authentication:** Short-lived JWT access tokens (`15m`) + HttpOnly refresh cookies (`/api/v1/identity/refresh`) with refresh token rotation and reuse detection.
+- **Client IDs:** Deterministic sequential format per year, e.g. `DAIH-2026-000001`.

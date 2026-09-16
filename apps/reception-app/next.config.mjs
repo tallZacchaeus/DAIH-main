@@ -1,0 +1,26 @@
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  transpilePackages: ["@daih/ui", "@daih/types", "@daih/api-client"],
+  async rewrites() {
+    const rawApi =
+      process.env.INTERNAL_API_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      "http://localhost:4000";
+    const apiHost = rawApi
+      .replace(/\/api\/v1\/?$/, "")
+      .replace(/\/api\/?$/, "")
+      .replace(/\/$/, "");
+    return [
+      {
+        source: "/api/v1/:path*",
+        destination: `${apiHost}/api/v1/:path*`,
+      },
+      {
+        source: "/uploads/:path*",
+        destination: `${apiHost}/uploads/:path*`,
+      },
+    ];
+  },
+};
+
+export default nextConfig;

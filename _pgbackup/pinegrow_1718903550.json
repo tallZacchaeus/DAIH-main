@@ -1,1 +1,10 @@
-{"files":{},"open-pages":["index.html","DAIH-main/index.html"],"urls":{"DAIH-main/index.html":{"open-with-wrapper":false,"open-page-views":[{"w":1024,"h":0}]}}}
+{
+  "files": {},
+  "open-pages": ["index.html", "DAIH-main/index.html"],
+  "urls": {
+    "DAIH-main/index.html": {
+      "open-with-wrapper": false,
+      "open-page-views": [{ "w": 1024, "h": 0 }]
+    }
+  }
+}

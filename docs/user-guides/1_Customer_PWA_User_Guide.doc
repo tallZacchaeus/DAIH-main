@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html xmlns:o='urn:schemas-microsoft-com:office:office' 
+      xmlns:w='urn:schemas-microsoft-com:office:word' 
+      xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+<meta charset="utf-8">
+<title>DAIH Customer Portal & PWA</title>
+<!--[if gte mso 9]>
+<xml>
+  <w:WordDocument>
+    <w:View>Print</w:View>
+    <w:Zoom>100</w:Zoom>
+    <w:DoNotOptimizeForBrowser/>
+  </w:WordDocument>
+</xml>
+<![endif]-->
+<style>
+  @page {
+    size: 8.5in 11.0in;
+    margin: 1.0in 1.0in 1.0in 1.0in;
+    mso-header-margin: 0.5in;
+    mso-footer-margin: 0.5in;
+    mso-paper-source: 0;
+  }
+  body {
+    font-family: 'Segoe UI', Calibri, Arial, sans-serif;
+    font-size: 11pt;
+    line-height: 1.6;
+    color: #2D3748;
+    background-color: #FFFFFF;
+  }
+  .header-card {
+    background: linear-gradient(135deg, #1A365D 0%, #2B6CB0 100%);
+    background-color: #1A365D;
+    color: #FFFFFF;
+    padding: 28px 32px;
+    border-radius: 8px;
+    margin-bottom: 28px;
+  }
+  .header-card h1 {
+    color: #FFFFFF;
+    font-size: 24pt;
+    margin: 0 0 6px 0;
+    font-weight: 700;
+  }
+  .header-card p.subtitle {
+    color: #E2E8F0;
+    font-size: 13pt;
+    margin: 0 0 12px 0;
+  }
+  .meta-badge {
+    display: inline-block;
+    background-color: rgba(255, 255, 255, 0.2);
+    color: #FFFFFF;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 9pt;
+    font-weight: 600;
+    margin-right: 8px;
+  }
+  h2 {
+    color: #1A365D;
+    font-size: 16pt;
+    border-bottom: 2px solid #E2E8F0;
+    padding-bottom: 6px;
+    margin-top: 28px;
+    margin-bottom: 12px;
+  }
+  h3 {
+    color: #2B6CB0;
+    font-size: 13pt;
+    margin-top: 18px;
+    margin-bottom: 8px;
+  }
+  h4 {
+    color: #4A5568;
+    font-size: 11pt;
+    margin-top: 14px;
+    margin-bottom: 6px;
+  }
+  p {
+    margin-top: 0;
+    margin-bottom: 10px;
+  }
+  ul, ol {
+    margin-top: 0;
+    margin-bottom: 12px;
+    padding-left: 24px;
+  }
+  li {
+    margin-bottom: 6px;
+  }
+  .callout-tip {
+    background-color: #EBF8FF;
+    border-left: 4px solid #3182CE;
+    padding: 12px 16px;
+    margin: 14px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .callout-tip strong {
+    color: #2B6CB0;
+  }
+  .callout-warning {
+    background-color: #FFFAF0;
+    border-left: 4px solid #DD6B20;
+    padding: 12px 16px;
+    margin: 14px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .callout-warning strong {
+    color: #C05621;
+  }
+  .callout-success {
+    background-color: #F0FFF4;
+    border-left: 4px solid #38A169;
+    padding: 12px 16px;
+    margin: 14px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .callout-success strong {
+    color: #276749;
+  }
+  table.doc-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 10pt;
+  }
+  table.doc-table th {
+    background-color: #2B6CB0;
+    color: #FFFFFF;
+    text-align: left;
+    padding: 8px 12px;
+    border: 1px solid #CBD5E0;
+    font-weight: 600;
+  }
+  table.doc-table td {
+    padding: 8px 12px;
+    border: 1px solid #CBD5E0;
+    vertical-align: top;
+  }
+  table.doc-table tr:nth-child(even) {
+    background-color: #F7FAFC;
+  }
+  .step-box {
+    background-color: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin-bottom: 14px;
+  }
+  .step-number {
+    display: inline-block;
+    background-color: #2B6CB0;
+    color: #FFFFFF;
+    font-weight: bold;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    border-radius: 50%;
+    margin-right: 8px;
+    font-size: 10pt;
+  }
+  code {
+    font-family: 'Consolas', 'Courier New', monospace;
+    background-color: #EDF2F7;
+    color: #C53030;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 9.5pt;
+  }
+  .footer-note {
+    margin-top: 36px;
+    border-top: 1px solid #E2E8F0;
+    padding-top: 12px;
+    font-size: 9pt;
+    color: #718096;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="header-card">
+  <h1>DAIH Customer Portal & PWA</h1>
+  <p class="subtitle">Comprehensive End-User Guide & Mobile Experience Manual</p>
+  <div>
+    <span class="meta-badge">DAIH Workspace Platform</span>
+    <span class="meta-badge">Official User Manual</span>
+    <span class="meta-badge">Version 1.0 (2026)</span>
+  </div>
+</div>
+
+
+  <h2>1. Overview & System Access</h2>
+  <p>The <strong>DAIH Customer Progressive Web App (PWA)</strong> is the self-service hub for members, coworkers, and visitors at DAIH Workspace. It enables you to discover available workspaces, book desks and conference rooms, pay securely via Paystack, manage your digital QR passes, receive real-time notifications, and access invoices.</p>
+  
+  <h3>1.1 Accessing the PWA</h3>
+  <ul>
+    <li><strong>Web URL:</strong> Access via any modern browser (Chrome, Safari, Edge, Firefox) at <code>https://app.daihworkspace.com</code> (or <code>http://localhost:3002</code> in development).</li>
+    <li><strong>Installing as a Mobile App (iOS):</strong> Open the link in Safari &rarr; Tap the <strong>Share</strong> button &rarr; Select <strong>"Add to Home Screen"</strong>.</li>
+    <li><strong>Installing as a Mobile App (Android):</strong> Open in Chrome &rarr; Tap the three-dot menu &rarr; Tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.</li>
+    <li><strong>Desktop PWA:</strong> Click the install icon in the browser address bar on Chrome or Edge to run DAIH as a standalone desktop application.</li>
+  </ul>
+
+  <div class="callout-tip">
+    <strong>Tip:</strong> Installing the PWA gives you instantaneous offline access to your active bookings, QR check-in passes, and native push notifications.
+  </div>
+
+  <h2>2. Account Registration & Security</h2>
+  
+  <div class="step-box">
+    <span class="step-number">1</span><strong>Creating Your Account</strong>
+    <p>Click <strong>"Sign Up"</strong> on the welcome screen. Enter your First Name, Last Name, Phone Number, Email Address, and a secure password. If you were invited by a colleague, enter their <strong>Referral Code</strong> to receive welcome credits.</p>
+  </div>
+
+  <div class="step-box">
+    <span class="step-number">2</span><strong>Email Verification & Client ID</strong>
+    <p>A 6-digit confirmation code will be sent to your email. Enter the code to activate your account. Once verified, you will be assigned a unique permanent <strong>Client ID</strong> (e.g., <code>DAIH-2026-0042</code>) displayed on your profile and digital pass.</p>
+  </div>
+
+  <div class="step-box">
+    <span class="step-number">3</span><strong>Two-Factor Authentication (2FA / MFA)</strong>
+    <p>To protect your account, navigate to <strong>Profile &rarr; Security Settings</strong>. You can enable <strong>Authenticator App (TOTP)</strong> (Google Authenticator, Microsoft Authenticator) or <strong>Email OTP</strong> for login verification.</p>
+  </div>
+
+  <h2>3. Workspaces & Facility Booking</h2>
+  <p>DAIH offers high-performance workspaces tailored to every working style:</p>
+  
+  <table class="doc-table">
+    <thead>
+      <tr>
+        <th>Space Category</th>
+        <th>Ideal For</th>
+        <th>Pricing Options</th>
+        <th>Included Amenities</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Hot Desk</strong></td>
+        <td>Freelancers & Remote Workers</td>
+        <td>Hourly, Daily, Night Plan</td>
+        <td>High-Speed WiFi, Power Outlets, Coffee Bar access</td>
+      </tr>
+      <tr>
+        <td><strong>Dedicated Desk</strong></td>
+        <td>Full-time Professionals & Founders</td>
+        <td>Weekly, Monthly</td>
+        <td>Reserved ergonomic desk, lockable drawer, monitor mount</td>
+      </tr>
+      <tr>
+        <td><strong>Office Suite</strong></td>
+        <td>Growing Teams & Startups (2&ndash;10 people)</td>
+        <td>Monthly, Quarterly</td>
+        <td>Private enclosed office, whiteboard, acoustic privacy</td>
+      </tr>
+      <tr>
+        <td><strong>Conference Hall</strong></td>
+        <td>Client Presentations & Board Meetings</td>
+        <td>Hourly, Half-day, Full-day</td>
+        <td>4K Presentation Display, Video Conferencing, Whiteboard</td>
+      </tr>
+      <tr>
+        <td><strong>Training Room</strong></td>
+        <td>Workshops, Bootcamps & Seminars</td>
+        <td>Half-day, Full-day</td>
+        <td>Modular seating up to 30 people, PA System, Projector</td>
+      </tr>
+      <tr>
+        <td><strong>Studio & Lounge</strong></td>
+        <td>Podcasting, Content Creation & Events</td>
+        <td>Hourly, Custom event</td>
+        <td>Acoustic treatment, softbox lighting, lounge seating</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3.1 Step-by-Step Booking Process</h3>
+  <ol>
+    <li>Navigate to the <strong>"Explore Spaces"</strong> tab.</li>
+    <li>Select your preferred facility resource (e.g., <em>Executive Hot Desk A</em>).</li>
+    <li>Choose your booking plan: <strong>Hourly</strong>, <strong>Daily Pass</strong>, or <strong>Night Plan</strong>.</li>
+    <li>Pick your date and start/end time. The app will immediately verify availability and prevent overlaps.</li>
+    <li>Review the booking summary and proceed to checkout.</li>
+  </ol>
+
+  <h2>4. Discounts, Coupons & Payments</h2>
+  <h3>4.1 Applying Promo Codes</h3>
+  <p>On the checkout screen, enter your coupon code in the <strong>"Discount Code"</strong> field and tap <strong>"Apply"</strong>. The breakdown will show your original price, discount deduction, and the final total.</p>
+
+  <h3>4.2 Completing Payment</h3>
+  <ul>
+    <li>Payments are processed securely via <strong>Paystack</strong>.</li>
+    <li>Supported methods: <strong>Debit/Credit Cards (Mastercard, Visa, Verve)</strong>, <strong>Bank Transfer</strong>, and <strong>USSD</strong>.</li>
+    <li>Once payment is confirmed, your booking state immediately updates to <code>CONFIRMED</code>, and your digital access pass is generated.</li>
+  </ul>
+
+  <h2>5. Onsite Arrival & Digital QR Pass</h2>
+  <div class="callout-success">
+    <strong>Contactless Check-In:</strong> You do not need physical plastic cards or paper tickets. Your digital QR code is your key into DAIH facilities.
+  </div>
+  <ol>
+    <li>When you arrive at the DAIH front gate or reception, open the app and tap <strong>"My Pass"</strong> or select your active booking card.</li>
+    <li>Present the animated <strong>QR Pass</strong> to the reception desk scanner or security tablet.</li>
+    <li>The scanner will authenticate your booking within 1 second, mark you as <code>CHECKED_IN</code>, and the turnstile/gate will admit you.</li>
+    <li>When leaving for the day, scan again at the exit scanner to record your checkout time.</li>
+  </ol>
+
+  <h2>6. In-App Notifications & Alerts</h2>
+  <p>The bell icon at the top right contains your real-time notification feed:</p>
+  <ul>
+    <li><strong>Booking Confirmations:</strong> Instant receipts and calendar event links.</li>
+    <li><strong>Check-in Reminders:</strong> Alerts 15 minutes before your scheduled session begins.</li>
+    <li><strong>Session Expiry Warnings:</strong> Notifications when your desk session is nearing conclusion with a 1-tap option to extend.</li>
+    <li><strong>Exclusive Promotions:</strong> Targeted discount codes and community event announcements.</li>
+  </ul>
+
+  <h2>7. Invoices, Receipts & Profile Management</h2>
+  <ul>
+    <li><strong>Invoices Tab:</strong> Download official VAT-compliant PDF invoices for expense claims and corporate accounting.</li>
+    <li><strong>Referrals:</strong> Share your personal referral code with colleagues. Earn credits whenever friends make their first booking.</li>
+    <li><strong>Support & FAQs:</strong> Need assistance? Tap <strong>"Support"</strong> to browse interactive FAQs or launch a direct WhatsApp chat with our community manager.</li>
+  </ul>
+
+
+<div class="footer-note">
+  <p><strong>DAIH Workspace Platform</strong> &bull; Confidential &amp; Proprietary &bull; Powered by Deepmind Hub Technology</p>
+</div>
+
+</body>
+</html>

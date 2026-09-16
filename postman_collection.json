@@ -1,0 +1,350 @@
+{
+  "info": {
+    "_postman_id": "daih-api-collection-v1",
+    "name": "DAIH Workspace & Booking Engine API",
+    "description": "Complete Postman collection for testing Identity, Catalogue, Booking Holds, Concurrency, and Admin Overrides.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "resourceId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "pricingTierId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "bookingId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Identity & Auth",
+      "item": [
+        {
+          "name": "Customer Registration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Tunde\",\n  \"lastName\": \"Ade\",\n  \"email\": \"tunde.postman@example.com\",\n  \"phoneNumber\": \"08012345678\",\n  \"password\": \"Password123!\",\n  \"policyVersion\": \"1.0\",\n  \"consented\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/identity/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["identity", "register"]
+            }
+          }
+        },
+        {
+          "name": "Admin Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.token) {",
+                  "    pm.collectionVariables.set('adminToken', jsonData.data.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@daih.ng\",\n  \"password\": \"SuperAdminPassword123!\",\n  \"portal\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/identity/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["identity", "login"]
+            }
+          }
+        },
+        {
+          "name": "Customer Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.token) {",
+                  "    pm.collectionVariables.set('accessToken', jsonData.data.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"tunde.postman@example.com\",\n  \"password\": \"Password123!\",\n  \"portal\": \"customer\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/identity/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["identity", "login"]
+            }
+          }
+        },
+        {
+          "name": "Get Profile (/me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/identity/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["identity", "me"]
+            }
+          }
+        },
+        {
+          "name": "Rotate Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/identity/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["identity", "refresh"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Catalogue",
+      "item": [
+        {
+          "name": "Get Public Workspaces",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.length > 0) {",
+                  "    pm.collectionVariables.set('resourceId', jsonData.data[0].id);",
+                  "    if (jsonData.data[0].pricingTiers && jsonData.data[0].pricingTiers.length > 0) {",
+                  "        pm.collectionVariables.set('pricingTierId', jsonData.data[0].pricingTiers[0].id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/catalogue/resources",
+              "host": ["{{baseUrl}}"],
+              "path": ["catalogue", "resources"]
+            }
+          }
+        },
+        {
+          "name": "Get Workspace by Slug",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/catalogue/resources/dedicated-desk",
+              "host": ["{{baseUrl}}"],
+              "path": ["catalogue", "resources", "dedicated-desk"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Booking Engine",
+      "item": [
+        {
+          "name": "Check Availability",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/availability?resourceId={{resourceId}}&startTime=2026-08-25T09:00:00.000Z&endTime=2026-08-25T17:00:00.000Z",
+              "host": ["{{baseUrl}}"],
+              "path": ["bookings", "availability"],
+              "query": [
+                {
+                  "key": "resourceId",
+                  "value": "{{resourceId}}"
+                },
+                {
+                  "key": "startTime",
+                  "value": "2026-08-25T09:00:00.000Z"
+                },
+                {
+                  "key": "endTime",
+                  "value": "2026-08-25T17:00:00.000Z"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create 10-Min Reservation Hold",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.bookingId) {",
+                  "    pm.collectionVariables.set('bookingId', jsonData.data.bookingId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceId\": \"{{resourceId}}\",\n  \"pricingTierId\": \"{{pricingTierId}}\",\n  \"startTime\": \"2026-08-25T09:00:00.000Z\",\n  \"endTime\": \"2026-08-25T17:00:00.000Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/bookings/hold",
+              "host": ["{{baseUrl}}"],
+              "path": ["bookings", "hold"]
+            }
+          }
+        },
+        {
+          "name": "Extend Hold (Checkout Grace)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bookingId}}/extend-hold",
+              "host": ["{{baseUrl}}"],
+              "path": ["bookings", "{{bookingId}}", "extend-hold"]
+            }
+          }
+        },
+        {
+          "name": "Cancel Booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Changed schedule for meeting\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bookingId}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["bookings", "{{bookingId}}", "cancel"]
+            }
+          }
+        },
+        {
+          "name": "Admin VIP Manual Override",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceId\": \"{{resourceId}}\",\n  \"pricingTierId\": \"{{pricingTierId}}\",\n  \"customerEmail\": \"vip.guest@company.com\",\n  \"customerName\": \"VIP Guest\",\n  \"startTime\": \"2026-08-26T09:00:00.000Z\",\n  \"endTime\": \"2026-08-26T17:00:00.000Z\",\n  \"waiveFee\": true,\n  \"overrideReason\": \"Operations Admin manual complimentary pass for visiting partner executive\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/bookings/admin/override",
+              "host": ["{{baseUrl}}"],
+              "path": ["bookings", "admin", "override"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

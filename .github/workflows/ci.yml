@@ -1,0 +1,86 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches:
+      - "**"
+
+jobs:
+  validate:
+    name: Lint, Typecheck, Test & Build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: daih_db
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: "postgresql://postgres:postgrespassword@localhost:5433/daih_db?schema=public"
+      REDIS_URL: "redis://localhost:6379"
+      JWT_SECRET: "ci-super-secret-jwt-key-min-32-chars-long"
+      JWT_REFRESH_SECRET: "ci-super-secret-refresh-key-min-32-chars-long"
+      TOKEN_ENCRYPTION_KEY: "ci-super-secret-encryption-key-min-32-chars"
+      QR_SIGNING_SECRET: "ci-qr-signing-key-1234567890"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm --filter @daih/api prisma:generate
+
+      - name: Push Database Schema
+        run: pnpm --filter @daih/api db:push
+
+      - name: Seed Email Templates
+        run: pnpm --filter @daih/api run seed:templates
+
+      - name: Check Code Formatting
+        run: pnpm lint
+
+      - name: Typecheck Workspace
+        run: pnpm typecheck
+
+      - name: Run Tests
+        run: pnpm test
+
+      - name: Build Monorepo
+        run: pnpm build

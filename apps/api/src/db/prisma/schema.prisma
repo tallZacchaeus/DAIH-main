@@ -1,0 +1,627 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  CUSTOMER
+  RECEPTION_OFFICER
+  SECURITY_OFFICER
+  OPERATIONS_ADMIN
+  FINANCE_OFFICER
+  SUPER_ADMIN
+  MANAGEMENT_VIEWER
+}
+
+enum ResourceCategory {
+  HOT_DESK
+  FLEX_DESK
+  DEDICATED_DESK
+  OFFICE_SUITE
+  CONFERENCE_HALL
+  TRAINING_ROOM
+  ROOFTOP_LOUNGE
+  STUDIO
+}
+
+enum BookingState {
+  DRAFT
+  HELD
+  PENDING_PAYMENT
+  CONFIRMED
+  ACTIVE
+  CHECKED_IN
+  CHECKED_OUT
+  COMPLETED
+  CANCELLED
+  EXPIRED
+  NO_SHOW
+  REFUND_PENDING
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum TransactionType {
+  PAYMENT
+  REFUND
+}
+
+enum PaymentMethod {
+  PAYSTACK
+  SUBSCRIPTION_CREDIT
+  BANK_TRANSFER
+  POS_TERMINAL
+}
+
+enum OutboxStatus {
+  PENDING
+  PUBLISHED
+  FAILED
+}
+
+enum MfaMethod {
+  EMAIL_OTP
+  TOTP
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FIXED_PRICE
+}
+
+enum CustomerEligibility {
+  ALL
+  SPECIFIC_CUSTOMERS
+  FIRST_TIME_ONLY
+  DOMAIN_MATCH
+}
+
+enum RedemptionStatus {
+  HELD
+  APPLIED
+  RELEASED
+  REFUNDED
+}
+
+enum DiscountSource {
+  CUSTOMER_COUPON
+  AUTOMATIC
+  STAFF_OVERRIDE
+}
+
+model User {
+  id                 String               @id @default(uuid())
+  email              String               @unique
+  passwordHash       String?
+  firstName          String
+  lastName           String
+  phoneNumber        String?
+  avatarUrl          String?
+  birthday           String?              // Stored as "MM-DD" (e.g. "05-24" for May 24th, year excluded)
+  clientId           String               @unique
+  role               UserRole             @default(CUSTOMER)
+  isVerified         Boolean              @default(false)
+  mfaEnabled         Boolean              @default(false)
+  mfaMethod          MfaMethod?           // null until configured
+  mfaSecret          String?              // AES-256-GCM encrypted TOTP secret
+  skipAnonymization  Boolean              @default(false)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  referralCode       String?              @unique
+  referredById       String?
+  referredBy         User?                @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referredUsers      User[]               @relation("UserReferrals")
+
+  bookings           Booking[]
+  transactions       Transaction[]
+  invoices           Invoice[]
+  consents           PolicyConsent[]
+  sessions           AuthSession[]
+  verificationTokens VerificationToken[]
+  resetTokens        PasswordResetToken[]
+  mfaOtpTokens       MfaOtpToken[]
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+  visitSessions      VisitSession[]
+  customerDiscountRedemptions DiscountRedemption[]    @relation("CustomerDiscountRedemptions")
+  staffDiscountRedemptions    DiscountRedemption[]    @relation("StaffDiscountRedemptions")
+  targetedDiscounts           DiscountTargetCustomer[]
+
+  @@index([role])
+  @@index([role, isVerified])
+  @@index([createdAt])
+  @@index([referredById])
+  @@index([referredById, createdAt])
+  @@index([referralCode])
+  @@map("users")
+}
+
+model PolicyConsent {
+  id            String         @id @default(uuid())
+  userId        String
+  policyVersion String
+  purpose       String
+  consentedAt   DateTime       @default(now())
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("policy_consents")
+}
+
+model AuthSession {
+  id               String   @id @default(uuid())
+  userId           String
+  refreshTokenHash String   @unique
+  tokenFamily      String
+  ipAddress         String?
+  userAgent         String?
+  deviceFingerprint String?
+  mismatchCount     Int      @default(0)
+  isRevoked         Boolean  @default(false)
+  expiresAt         DateTime
+  lastUsedAt        DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenFamily])
+  @@map("auth_sessions")
+}
+
+model VerificationToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("verification_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model MfaOtpToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique  // SHA-256 of the 6-digit OTP code
+  expiresAt DateTime            // now + 10 minutes
+  usedAt    DateTime?           // set on consumption to prevent replay
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("mfa_otp_tokens")
+}
+
+model ClientIdSequence {
+  year         Int      @id
+  nextSequence Int      @default(1)
+  updatedAt    DateTime @updatedAt
+
+  @@map("client_id_sequences")
+}
+
+model InvoiceSequence {
+  year         Int      @id
+  nextSequence Int      @default(1)
+  updatedAt    DateTime @updatedAt
+
+  @@map("invoice_sequences")
+}
+
+model OutboxEvent {
+  id            String       @id @default(uuid())
+  eventType     String
+  aggregateType String
+  aggregateId   String
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  retryCount    Int          @default(0)
+  error         String?
+  scheduledAt   DateTime     @default(now())
+  processedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([status, scheduledAt])
+  @@map("outbox_events")
+}
+
+model Notification {
+  id            String    @id @default(uuid())
+  userId        String
+  type          String
+  title         String
+  message       String
+  linkHref      String?
+  metadata      Json?
+  sourceEventId String?   @unique
+  readAt        DateTime?
+  archivedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([userId, archivedAt, createdAt])
+  @@map("notifications")
+}
+
+model FacilityResource {
+  id            String           @id @default(uuid())
+  name          String
+  slug          String           @unique
+  category      ResourceCategory
+  description   String
+  capacity      Int              @default(1)
+  location      String
+  amenities     String[]
+  imageUrl      String?
+  sortOrder     Int              @default(0)
+  isPopular     Boolean          @default(false)
+  isActive      Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  pricing       ResourcePricing[]
+  schedules     ResourceSchedule[]
+  blackouts     ResourceBlackout[]
+  bookings      Booking[]
+  targetedDiscounts DiscountTargetResource[]
+
+  @@map("facility_resources")
+}
+
+model ResourcePricing {
+  id              String           @id @default(uuid())
+  resourceId      String
+  planName        String
+  durationHours   Int?
+  durationDays    Int?
+  durationMonths  Int?
+  price           Decimal          @db.Decimal(12, 2)
+  currency        String           @default("NGN")
+  isPopular       Boolean          @default(false)
+  isActive        Boolean          @default(true)
+  isNightPlan     Boolean          @default(false)
+  operatingHours  String?
+  effectiveFrom   DateTime         @default(now())
+  effectiveTo     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  resource        FacilityResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@map("resource_pricing")
+}
+
+model ResourceSchedule {
+  id          String           @id @default(uuid())
+  resourceId  String
+  dayOfWeek   Int              // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  openTime    String           @default("08:00")
+  closeTime   String           @default("20:00")
+  is24Hours   Boolean          @default(false)
+  isClosed    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  resource    FacilityResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceId, dayOfWeek])
+  @@map("resource_schedules")
+}
+
+model ResourceBlackout {
+  id              String           @id @default(uuid())
+  resourceId      String
+  startDate       DateTime
+  endDate         DateTime
+  reason          String
+  isActive        Boolean          @default(true)
+  createdByUserId String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  resource        FacilityResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId, startDate, endDate])
+  @@map("resource_blackouts")
+}
+
+model Booking {
+  id              String           @id @default(uuid())
+  reference       String           @unique
+  resourceId      String
+  userId          String
+  startTime       DateTime
+  endTime         DateTime
+  state           BookingState     @default(DRAFT)
+  holdExpiresAt   DateTime?
+  totalAmount     Decimal          @db.Decimal(12, 2)
+  originalAmount  Decimal?         @db.Decimal(12, 2)
+  discountAmount  Decimal?         @db.Decimal(12, 2) @default(0)
+  discountId      String?
+  discountCode    String?
+  currency        String           @default("NGN")
+  qrToken         String?
+  checkedInAt     DateTime?
+  checkedOutAt    DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  resource        FacilityResource @relation(fields: [resourceId], references: [id])
+  user            User             @relation(fields: [userId], references: [id])
+  discount        Discount?        @relation(fields: [discountId], references: [id], onDelete: SetNull)
+  transactions    Transaction[]
+  visitSessions   VisitSession[]
+  redemptions     DiscountRedemption[]
+
+  @@index([resourceId, startTime, endTime])
+  @@index([state])
+  @@index([userId])
+  @@index([userId, state])
+  @@index([createdAt])
+  @@index([holdExpiresAt, state])
+  @@index([checkedInAt])
+  @@map("bookings")
+}
+
+model Transaction {
+  id                String         @id @default(uuid())
+  reference         String         @unique
+  bookingId         String
+  userId            String
+  amount            Decimal        @db.Decimal(12, 2)
+  currency          String         @default("NGN")
+  status            PaymentStatus  @default(PENDING)
+  method            PaymentMethod  @default(PAYSTACK)
+  paystackReference String?        @unique
+  paystackChannel   String?
+  gatewayResponse   Json?
+  webhookEventId    String?        @unique
+  webhookReceivedAt DateTime?
+  paidAt            DateTime?
+  failedAt          DateTime?
+  refundedAt        DateTime?
+  refundAmount      Decimal?       @db.Decimal(12, 2)
+  refundReason      String?
+  refundedBy        String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  booking           Booking        @relation(fields: [bookingId], references: [id])
+  user              User           @relation(fields: [userId], references: [id])
+  invoice           Invoice?
+
+  @@index([status])
+  @@index([bookingId])
+  @@index([webhookEventId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@map("transactions")
+}
+
+model Invoice {
+  id               String      @id @default(uuid())
+  invoiceNumber    String      @unique
+  transactionId    String      @unique
+  bookingId        String
+  userId           String
+  subtotal         Decimal     @db.Decimal(12, 2)
+  tax              Decimal     @db.Decimal(12, 2) @default(0)
+  total            Decimal     @db.Decimal(12, 2)
+  currency         String      @default("NGN")
+  lineItems        Json
+  issuedAt         DateTime    @default(now())
+  customerName     String
+  customerEmail    String
+  customerClientId String
+  resourceName     String
+  bookingReference String
+  createdAt        DateTime    @default(now())
+
+  transaction      Transaction @relation(fields: [transactionId], references: [id])
+  user             User        @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([bookingId])
+  @@map("invoices")
+}
+
+model AuditLog {
+  id          String         @id @default(uuid())
+  userId      String?
+  action      String
+  entityType  String
+  entityId    String
+  metadata    Json?
+  ipAddress   String?
+  createdAt   DateTime       @default(now())
+
+  user        User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
+
+model VisitSession {
+  id           String    @id @default(uuid())
+  bookingId    String
+  userId       String
+  staffUserId  String?
+  terminalId   String?   @default("REC-GATE-01")
+  checkInTime  DateTime  @default(now())
+  checkOutTime DateTime?
+  ipAddress    String?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  booking      Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([userId])
+  @@index([checkInTime])
+  @@map("visit_sessions")
+}
+
+model EmailTemplate {
+  id           String   @id @default(uuid())
+  type         String   @unique
+  subject      String
+  htmlBody     String
+  textBody     String?
+  isActive     Boolean  @default(true)
+  lastEditedBy String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("email_templates")
+}
+
+model Discount {
+  id                 String               @id @default(uuid())
+  code               String?              @unique
+  name               String
+  description        String?
+  type               DiscountType
+  value              Decimal              @db.Decimal(12, 2)
+  maxDiscountAmount  Decimal?             @db.Decimal(12, 2)
+  minOrderAmount     Decimal?             @db.Decimal(12, 2) @default(0)
+  currency           String               @default("NGN")
+  isAutomatic        Boolean              @default(false)
+  isActive           Boolean              @default(true)
+  validFrom          DateTime             @default(now())
+  validUntil         DateTime?
+  maxUsageTotal      Int?
+  maxUsagePerUser    Int                  @default(1)
+  currentUsageCount  Int                  @default(0)
+  appliesToAll       Boolean              @default(true)
+  targetCategories   ResourceCategory[]
+  customerEligibility CustomerEligibility @default(ALL)
+  targetEmailDomains String[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  targetResources    DiscountTargetResource[]
+  targetCustomers    DiscountTargetCustomer[]
+  redemptions        DiscountRedemption[]
+  bookings           Booking[]
+
+  @@index([code])
+  @@index([isActive, validFrom, validUntil])
+  @@map("discounts")
+}
+
+model DiscountTargetResource {
+  id         String           @id @default(uuid())
+  discountId String
+  resourceId String
+
+  discount   Discount         @relation(fields: [discountId], references: [id], onDelete: Cascade)
+  resource   FacilityResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([discountId, resourceId])
+  @@map("discount_target_resources")
+}
+
+model DiscountTargetCustomer {
+  id         String           @id @default(uuid())
+  discountId String
+  userId     String
+
+  discount   Discount         @relation(fields: [discountId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([discountId, userId])
+  @@map("discount_target_customers")
+}
+
+model DiscountRedemption {
+  id                String           @id @default(uuid())
+  discountId        String?
+  userId            String
+  bookingId         String
+  transactionId     String?
+  source            DiscountSource   @default(CUSTOMER_COUPON)
+  appliedByStaffId  String?
+  justificationNote String?
+  originalAmount    Decimal          @db.Decimal(12, 2)
+  discountAmount    Decimal          @db.Decimal(12, 2)
+  finalAmount       Decimal          @db.Decimal(12, 2)
+  status            RedemptionStatus @default(HELD)
+  heldAt            DateTime         @default(now())
+  appliedAt         DateTime?
+  releasedAt        DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  discount          Discount?        @relation(fields: [discountId], references: [id], onDelete: SetNull)
+  user              User             @relation("CustomerDiscountRedemptions", fields: [userId], references: [id], onDelete: Cascade)
+  appliedByStaff    User?            @relation("StaffDiscountRedemptions", fields: [appliedByStaffId], references: [id], onDelete: SetNull)
+  booking           Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([discountId])
+  @@index([userId])
+  @@index([bookingId])
+  @@index([appliedByStaffId])
+  @@index([source])
+  @@map("discount_redemptions")
+}
+
+model LegalPolicy {
+  id            String    @id @db.VarChar(64)
+  type          String    @unique @db.VarChar(64)
+  title         String    @db.Text
+  content       String    @db.Text
+  version       String    @default("1.0") @db.VarChar(32)
+  effectiveDate DateTime  @default(now()) @map("effective_date") @db.Timestamptz
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  updatedBy     String?   @map("updated_by") @db.VarChar(64)
+
+  @@map("legal_policies")
+}
+
+model SupportSetting {
+  id        String   @id @default("default") @db.VarChar(64)
+  contact   Json     @db.JsonB
+  faqs      Json     @db.JsonB
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  updatedBy String?  @map("updated_by") @db.VarChar(64)
+
+  @@map("support_settings")
+}

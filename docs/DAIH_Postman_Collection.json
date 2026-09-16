@@ -1,0 +1,472 @@
+{
+  "info": {
+    "_postman_id": "daih-workspace-platform-v1",
+    "name": "DAIH Platform API",
+    "description": "Complete Postman collection for the DAIH Platform (Express Modular Monolith API).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. System Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Identity & Authentication",
+      "item": [
+        {
+          "name": "1.1 Login as Super Administrator",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    var token = json.data && (json.data.token || json.data.accessToken);",
+                  "    if (token) {",
+                  "        pm.collectionVariables.set('token', token);",
+                  "        pm.environment.set('token', token);",
+                  "        console.log('✅ Access Token automatically saved to {{token}}');",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@daih.ng\",\n  \"password\": \"SuperAdminPassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "identity", "login"]
+            }
+          }
+        },
+        {
+          "name": "1.2 Register Customer Account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"newmember@daih.ng\",\n  \"password\": \"StrongPass2026!\",\n  \"firstName\": \"Ayodele\",\n  \"lastName\": \"Ogunlesi\",\n  \"phone\": \"08012345678\",\n  \"agreedToPolicy\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "identity", "register"]
+            }
+          }
+        },
+        {
+          "name": "1.3 Get Current User Profile (Me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "identity", "me"]
+            }
+          }
+        },
+        {
+          "name": "1.4 Create Staff / Reception Officer (Admin Only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"receptionist@daih.ng\",\n  \"firstName\": \"Blessing\",\n  \"lastName\": \"Okorie\",\n  \"phone\": \"08087654321\",\n  \"role\": \"RECEPTIONIST\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/admin/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "identity", "admin", "users"]
+            }
+          }
+        },
+        {
+          "name": "1.5 Refresh Access Token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "identity", "refresh"]
+            }
+          }
+        },
+        {
+          "name": "1.6 Request Password Reset",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"newmember@daih.ng\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/password-reset/request",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "identity", "password-reset", "request"]
+            }
+          }
+        },
+        {
+          "name": "1.7 Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/identity/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "identity", "logout"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Workspace Catalogue",
+      "item": [
+        {
+          "name": "2.1 List All Resources & Pricing",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/catalogue/resources",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "catalogue", "resources"]
+            }
+          }
+        },
+        {
+          "name": "2.2 Get Single Resource by Slug",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/catalogue/resources/hot-desk",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "catalogue", "resources", "hot-desk"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Bookings",
+      "item": [
+        {
+          "name": "3.1 Create 10-Min Workspace Hold",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceId\": \"res_hot_desk\",\n  \"startTime\": \"2026-08-25T09:00:00.000Z\",\n  \"endTime\": \"2026-08-25T18:00:00.000Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/hold",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "hold"]
+            }
+          }
+        },
+        {
+          "name": "3.2 List My Bookings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/my",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "my"]
+            }
+          }
+        },
+        {
+          "name": "3.3 Get Booking by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/bk_sample_01",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "bk_sample_01"]
+            }
+          }
+        },
+        {
+          "name": "3.4 Confirm Booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/bk_sample_01/confirm",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "bk_sample_01", "confirm"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Payments & Invoicing",
+      "item": [
+        {
+          "name": "4.1 Initialize Paystack Checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payments/initialize/bk_sample_01",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "payments", "initialize", "bk_sample_01"]
+            }
+          }
+        },
+        {
+          "name": "4.2 Get Payment History & Invoices",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payments/history",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "payments", "history"]
+            }
+          }
+        },
+        {
+          "name": "4.3 Paystack Webhook Simulation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"charge.success\",\n  \"data\": {\n    \"reference\": \"DAIH-PAY-88219\",\n    \"amount\": 4500000,\n    \"currency\": \"NGN\",\n    \"status\": \"success\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payments/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "payments", "webhook"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Access Control & QR Terminal",
+      "item": [
+        {
+          "name": "5.1 Generate Signed QR Pass for Booking",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/access/qr/bk_sample_01",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "access", "qr", "bk_sample_01"]
+            }
+          }
+        },
+        {
+          "name": "5.2 Reception Officer: Verify QR Pass",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"daih_qr_token_bk_sample_01_signed\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/access/verify-qr",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "access", "verify-qr"]
+            }
+          }
+        },
+        {
+          "name": "5.3 Reception Officer: Check In Member",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/access/checkin/bk_sample_01",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "access", "checkin", "bk_sample_01"]
+            }
+          }
+        },
+        {
+          "name": "5.4 Reception Officer: Check Out Member",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/access/checkout/bk_sample_01",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "access", "checkout", "bk_sample_01"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Observability & Debug",
+      "item": [
+        {
+          "name": "6.1 Trigger Sentry Test Error",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/debug/sentry-error",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "debug", "sentry-error"]
+            }
+          }
+        },
+        {
+          "name": "6.2 Test Datadog Active Tracing Span",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/debug/datadog-span",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "debug", "datadog-span"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

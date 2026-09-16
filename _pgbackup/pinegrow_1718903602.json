@@ -1,1 +1,12 @@
-{"files":{},"open-pages":["index.html","DAIH-main/index.html","DAIH-main/email.php"],"urls":{"DAIH-main/index.html":{"open-with-wrapper":false,"open-page-views":[{"w":1024,"h":0}]},"DAIH-main/email.php":{"open-with-wrapper":false},"DAIH-main/dedicated-desk.html":{"open-with-wrapper":false}}}
+{
+  "files": {},
+  "open-pages": ["index.html", "DAIH-main/index.html", "DAIH-main/email.php"],
+  "urls": {
+    "DAIH-main/index.html": {
+      "open-with-wrapper": false,
+      "open-page-views": [{ "w": 1024, "h": 0 }]
+    },
+    "DAIH-main/email.php": { "open-with-wrapper": false },
+    "DAIH-main/dedicated-desk.html": { "open-with-wrapper": false }
+  }
+}

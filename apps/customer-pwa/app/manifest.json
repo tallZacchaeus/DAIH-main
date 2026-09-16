@@ -1,0 +1,16 @@
+{
+  "name": "DAIH Member Experience",
+  "short_name": "DAIH Hub",
+  "description": "Book workspace, manage subscriptions and view access QR pass",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0f1d35",
+  "theme_color": "#1f3a68",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}

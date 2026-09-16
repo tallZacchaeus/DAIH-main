@@ -1,0 +1,61 @@
+"use client";
+
+import React from "react";
+import { cn } from "../utils/cn";
+
+export interface QRDisplayProps {
+  token: string;
+  customerName?: string;
+  bookingRef?: string;
+  validUntil?: string;
+  className?: string;
+}
+
+export const QRDisplay: React.FC<QRDisplayProps> = ({
+  token,
+  customerName,
+  bookingRef,
+  validUntil,
+  className,
+}) => {
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
+    token,
+  )}`;
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center p-6 bg-white rounded-2xl border border-slate-200 shadow-md max-w-sm mx-auto text-center",
+        className,
+      )}
+    >
+      <div className="w-12 h-1 bg-[#1f3a68] rounded-full mb-4"></div>
+      <h3 className="font-semibold text-lg text-slate-900">Access Pass</h3>
+      {bookingRef && (
+        <p className="text-xs font-mono text-slate-500 uppercase mt-0.5">
+          Ref: {bookingRef}
+        </p>
+      )}
+
+      <div className="my-5 p-3 bg-slate-50 rounded-xl border border-slate-200">
+        <img
+          src={qrUrl}
+          alt={`QR Code Access for ${bookingRef || "booking"}`}
+          className="w-48 h-48 object-contain rounded-lg"
+        />
+      </div>
+
+      {customerName && (
+        <p className="font-medium text-sm text-slate-800">{customerName}</p>
+      )}
+      {validUntil && (
+        <p className="text-xs text-slate-500 mt-1">
+          Valid Until: <span className="font-semibold">{validUntil}</span>
+        </p>
+      )}
+      <div className="mt-4 text-[11px] text-slate-400">
+        Present this QR code at reception or security check-in
+      </div>
+    </div>
+  );
+};

@@ -1,0 +1,126 @@
+/* DAIH Custom overrides */
+:root {
+  --primary-color: #0032d0;
+  --primary-color-rgb: 0, 50, 208;
+  --secondary-color: #220563;
+  --secondary-color-rgb: 34, 5, 99;
+}
+
+.btn-main,
+a.btn-main,
+.pricing-s1 .action a,
+.de-event-item .d-text a.btn-main,
+.btn-id,
+.bg-color-secondary {
+  background-color: #220563 !important;
+  color: #fff !important;
+}
+
+.btn-main:hover,
+a.btn-main:hover,
+.pricing-s1 .action a:hover,
+.de-event-item .d-text a.btn-main:hover {
+  background-color: #35089e !important;
+  color: #fff !important;
+}
+
+.pricing-s1 .price .currency {
+  font-size: 24px;
+  vertical-align: top;
+}
+.pricing-s1 .price .m,
+.pricing-s1 .price .y {
+  font-size: 36px;
+  font-weight: 700;
+}
+.pricing-s1 .price .month {
+  font-size: 14px;
+}
+.pricing-s1 .plan-tagline {
+  font-size: 13px;
+  margin-bottom: 0;
+  opacity: 0.8;
+}
+.de-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.why-media img {
+  border-radius: 8px;
+}
+
+/* Price block: transparent background & black price text */
+.de-card .d-price,
+.de-card .de-price,
+.de-card.s2 .d-price {
+  background: transparent !important;
+  padding: 10px 0 0 0 !important;
+}
+
+.de-card .d-price span,
+.de-card.s2 .d-price span {
+  color: #181c20 !important;
+  font-weight: 800 !important;
+}
+
+.de-card .d-price div,
+.de-card.s2 .d-price div {
+  color: #717171 !important;
+}
+
+/* Zero-flash mobile navbar on initial load */
+@media (max-width: 991.98px) {
+  #mainmenu:not(.open) {
+    display: none !important;
+  }
+}
+
+/* Full width pricing cards on small screens */
+@media (max-width: 767.98px) {
+  #section-pricing .container {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+  .pricing-s1 {
+    width: 100% !important;
+  }
+}
+
+/* Ensure mobile CTA label is always visible */
+.mobile-cta-label {
+  display: inline-block !important;
+  color: #ffffff !important;
+  border: none !important;
+}
+
+/* Remove button beside hamburger on mobile */
+@media (max-width: 991.98px) {
+  .menu_side_area .header-book-btn {
+    display: none !important;
+  }
+}
+
+/* ── Themed Scrollbar ───────────────────────────────────── */
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #220563 #e8e4f0;
+}
+
+/* Chrome / Safari / Edge */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #e8e4f0;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb {
+  background: #220563;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #35089e;
+}
