@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { FacilityResource } from "@daih/types";
+import { FacilityResource, decodeHtmlEntities } from "@daih/types";
 import { resolveResourceImageUrl } from "../../lib/image-utils";
 import {
   MoreVertical,
@@ -556,7 +556,7 @@ export function ResourceCard({
                 key={idx}
                 className="bg-slate-100 text-slate-700 text-[11px] font-semibold px-2 py-0.5 rounded truncate max-w-[130px]"
               >
-                {a}
+                {decodeHtmlEntities(a)}
               </span>
             ))}
           </div>

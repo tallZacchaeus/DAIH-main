@@ -16,6 +16,12 @@ import {
   TransactionFilterQuerySchema,
   ReconciliationQuerySchema,
   DailySummaryQuerySchema,
+  RaiseRefundRequestSchema,
+  RefundRequestIdParamsSchema,
+  RequestInfoBodySchema,
+  ProvideInfoBodySchema,
+  RejectRefundBodySchema,
+  ListRefundsQuerySchema,
 } from "./payments.schema.js";
 
 // Dedicated Webhook Router that preserves raw body for cryptographic HMAC verification
@@ -104,4 +110,85 @@ paymentsRouter.get(
   authenticate,
   validateParams(TransactionIdParamsSchema),
   paymentsController.getInvoice,
+);
+
+// ---------------------------------------------------------------------------
+// Dual-Authorization Refund Workflow Routes
+// Operations Admin raises -> Finance Officer / Super Admin approves
+// ---------------------------------------------------------------------------
+
+// Operations Admin: Raise a refund request with >= 20 characters justification
+paymentsRouter.post(
+  "/admin/refunds",
+  authenticate,
+  requireRoles([UserRole.OPERATIONS_ADMIN, UserRole.SUPER_ADMIN]),
+  validateBody(RaiseRefundRequestSchema),
+  paymentsController.raiseRefund,
+);
+
+// Staff: List refund requests with filter & pagination
+paymentsRouter.get(
+  "/admin/refunds",
+  authenticate,
+  requireRoles([
+    UserRole.OPERATIONS_ADMIN,
+    UserRole.FINANCE_OFFICER,
+    UserRole.SUPER_ADMIN,
+    UserRole.MANAGEMENT_VIEWER,
+  ]),
+  validateQuery(ListRefundsQuerySchema),
+  paymentsController.listRefunds,
+);
+
+// Staff: Retrieve details of single refund request
+paymentsRouter.get(
+  "/admin/refunds/:id",
+  authenticate,
+  requireRoles([
+    UserRole.OPERATIONS_ADMIN,
+    UserRole.FINANCE_OFFICER,
+    UserRole.SUPER_ADMIN,
+    UserRole.MANAGEMENT_VIEWER,
+  ]),
+  validateParams(RefundRequestIdParamsSchema),
+  paymentsController.getRefund,
+);
+
+// Finance Officer: Request more information / clarification from Operations Admin
+paymentsRouter.post(
+  "/admin/refunds/:id/request-info",
+  authenticate,
+  requireRoles([UserRole.FINANCE_OFFICER, UserRole.SUPER_ADMIN]),
+  validateParams(RefundRequestIdParamsSchema),
+  validateBody(RequestInfoBodySchema),
+  paymentsController.requestRefundInfo,
+);
+
+// Operations Admin: Respond to clarification request from Finance
+paymentsRouter.post(
+  "/admin/refunds/:id/provide-info",
+  authenticate,
+  requireRoles([UserRole.OPERATIONS_ADMIN, UserRole.SUPER_ADMIN]),
+  validateParams(RefundRequestIdParamsSchema),
+  validateBody(ProvideInfoBodySchema),
+  paymentsController.provideRefundInfo,
+);
+
+// Finance Officer / Super Admin: Approve refund request (triggers Paystack gateway refund & loyalty clawbacks)
+paymentsRouter.post(
+  "/admin/refunds/:id/approve",
+  authenticate,
+  requireRoles([UserRole.FINANCE_OFFICER, UserRole.SUPER_ADMIN]),
+  validateParams(RefundRequestIdParamsSchema),
+  paymentsController.approveRefund,
+);
+
+// Finance Officer / Super Admin: Reject refund request with reason
+paymentsRouter.post(
+  "/admin/refunds/:id/reject",
+  authenticate,
+  requireRoles([UserRole.FINANCE_OFFICER, UserRole.SUPER_ADMIN]),
+  validateParams(RefundRequestIdParamsSchema),
+  validateBody(RejectRefundBodySchema),
+  paymentsController.rejectRefund,
 );

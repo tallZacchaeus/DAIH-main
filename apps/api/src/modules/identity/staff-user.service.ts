@@ -7,7 +7,6 @@ import { sessionService } from "./session.service.js";
 import { CreateStaffUserDTO, UserSummaryDTO } from "./identity.types.js";
 
 import { config } from "../../config/env.js";
-import { emailService } from "../email/email.service.js";
 
 export class StaffUserService {
   /**
@@ -58,21 +57,6 @@ export class StaffUserService {
       setupUrl,
       tokenExpiresAt,
     });
-
-    // Send staff welcome/invite email directly for prompt UX
-    try {
-      await emailService.sendStaffWelcomeEmail(
-        user.email,
-        `${user.firstName} ${user.lastName}`,
-        user.role,
-        setupUrl,
-      );
-    } catch (err: any) {
-      console.warn(
-        "Direct staff welcome email send deferred to background outbox:",
-        err?.message,
-      );
-    }
 
     return {
       id: user.id,
@@ -137,21 +121,6 @@ export class StaffUserService {
       setupUrl,
       tokenExpiresAt,
     );
-
-    // Dispatch directly for instant delivery
-    try {
-      await emailService.sendStaffWelcomeEmail(
-        user.email,
-        `${user.firstName} ${user.lastName}`,
-        user.role,
-        setupUrl,
-      );
-    } catch (err: any) {
-      console.warn(
-        "Direct staff setup link resend deferred to background outbox:",
-        err?.message,
-      );
-    }
 
     return {
       success: true,

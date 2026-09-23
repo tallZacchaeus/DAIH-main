@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { api } from "@daih/api-client";
 import { useToast } from "@daih/ui";
-import { CustomerReferralsResponse } from "@daih/types";
+import { CustomerReferralsResponse, LoyaltySettingsRecord } from "@daih/types";
 import {
   Copy,
   Check,
@@ -16,11 +17,16 @@ import {
   Send,
   MessageSquare,
   Mail,
+  Coins,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 
 export default function ReferralsPage() {
   const toast = useToast();
   const [data, setData] = useState<CustomerReferralsResponse | null>(null);
+  const [loyaltySettings, setLoyaltySettings] =
+    useState<LoyaltySettingsRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -28,8 +34,12 @@ export default function ReferralsPage() {
   const fetchReferrals = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.referrals.getMyReferrals();
+      const [res, settings] = await Promise.all([
+        api.referrals.getMyReferrals(),
+        api.loyalty.getSettings().catch(() => null),
+      ]);
       setData(res);
+      if (settings) setLoyaltySettings(settings);
     } catch (err: any) {
       toast.error(err?.message || "Failed to load referral details.", {
         title: "Error Loading Referrals",
@@ -87,12 +97,11 @@ export default function ReferralsPage() {
   const mailUrl = `mailto:?subject=${encodeURIComponent("Join me on DAIH Workspace")}&body=${shareText}`;
 
   return (
-    <div className="space-y-6 sm:space-y-8 max-w-5xl mx-auto pb-12">
+    <div className="space-y-6 sm:space-y-8 w-full pb-12">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#EBE7F5] pb-6">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#181c20] tracking-tight flex items-center gap-2.5">
-            <Users className="w-7 h-7 text-[#23055c]" />
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#181c20] tracking-tight">
             Referrals
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
@@ -242,6 +251,37 @@ export default function ReferralsPage() {
               </div>
             </div>
           </div>
+
+          {/* PD Coin Loyalty Referral Reward Banner */}
+          {loyaltySettings?.isReferralRewardEnabled && (
+            <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-200/80 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-400 flex items-center justify-center text-white shadow-xs shrink-0">
+                  <Coins className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                    {loyaltySettings.referralRewardPercent
+                      ? `Earn ${loyaltySettings.referralRewardPercent}% Referral Rewards in ${loyaltySettings.coinName || "PD Coins"}`
+                      : `Earn ${loyaltySettings.coinsPerActiveReferral} ${loyaltySettings.coinName || "PD Coins"} per Active Referral`}
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {loyaltySettings.referralRewardPercent
+                      ? `Earn ${loyaltySettings.referralRewardPercent}% of your referred friend's reservation spend (up to ${loyaltySettings.referralCapCoins?.toLocaleString() || "1,000"} ${loyaltySettings.coinSymbol || "PD"} with a ${loyaltySettings.referralFloorCoins || 50} ${loyaltySettings.coinSymbol || "PD"} floor on their first booking) credited to your loyalty wallet.`
+                      : `Whenever someone registers with your code and completes their first booking, you earn ${loyaltySettings.coinsPerActiveReferral} ${loyaltySettings.coinSymbol || "PDC"} directly to your loyalty wallet.`}
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/loyalty"
+                className="px-4 py-2 bg-[#23055c] hover:bg-[#35089e] text-white text-xs font-bold rounded-xl transition-all shadow-2xs flex items-center gap-1.5 shrink-0 self-start sm:self-auto cursor-pointer"
+              >
+                <span>View Coin Wallet</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          )}
 
           {/* 3 Metric Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

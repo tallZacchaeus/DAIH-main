@@ -35,6 +35,11 @@ import {
   mfaVerifySetupSchema,
   mfaVerifyChallengeSchema,
   mfaResendOtpSchema,
+  googleAuthSchema,
+  onboardingAttributionSchema,
+  policyConsentSchema,
+  profileMfaInitiateSchema,
+  profileMfaConfirmSchema,
 } from "./identity.schema.js";
 
 export const identityRouter = Router();
@@ -52,6 +57,41 @@ identityRouter.post(
   loginRateLimiter,
   validateBody(loginSchema),
   identityController.login,
+);
+
+identityRouter.post(
+  "/auth/google",
+  loginRateLimiter,
+  validateBody(googleAuthSchema),
+  identityController.googleAuth,
+);
+
+identityRouter.post(
+  "/google",
+  loginRateLimiter,
+  validateBody(googleAuthSchema),
+  identityController.googleAuth,
+);
+
+// Google OAuth PKCE Flow
+identityRouter.get(
+  "/oauth/google",
+  loginRateLimiter,
+  identityController.initiateGoogleOAuth,
+);
+
+identityRouter.get(
+  "/oauth/google/callback",
+  loginRateLimiter,
+  identityController.handleGoogleOAuthCallback,
+);
+
+// NDPR Policy Consent
+identityRouter.post(
+  "/consent",
+  authenticate,
+  validateBody(policyConsentSchema),
+  identityController.capturePolicyConsent,
 );
 
 // ─── MFA Endpoints ───────────────────────────────────────────────────────────
@@ -158,6 +198,28 @@ identityRouter.get(
   "/me/referrals",
   authenticate,
   identityController.getMyReferrals,
+);
+identityRouter.post(
+  "/me/onboarding-attribution",
+  authenticate,
+  registrationRateLimiter,
+  validateBody(onboardingAttributionSchema),
+  identityController.submitOnboardingAttribution,
+);
+
+// Authenticated MFA Selection & Change
+identityRouter.post(
+  "/me/mfa/initiate",
+  authenticate,
+  validateBody(profileMfaInitiateSchema),
+  identityController.initiateProfileMfa,
+);
+
+identityRouter.post(
+  "/me/mfa/confirm",
+  authenticate,
+  validateBody(profileMfaConfirmSchema),
+  identityController.confirmProfileMfa,
 );
 
 // Staff Users Management Endpoints (Strictly Super Admin Protected)

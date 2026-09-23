@@ -33,6 +33,8 @@ export default function DashboardLayout({
       } else if (user && user.role !== UserRole.CUSTOMER) {
         // Automatically revoke staff sessions from customer dashboard
         logout().then(() => router.push("/login"));
+      } else if (user && user.onboardingCompleted === false) {
+        router.push("/onboarding");
       }
     }
   }, [isLoading, isAuthenticated, user, router, logout, pathname]);
@@ -45,7 +47,12 @@ export default function DashboardLayout({
     );
   }
 
-  if (!isAuthenticated || !user || user.role !== UserRole.CUSTOMER) {
+  if (
+    !isAuthenticated ||
+    !user ||
+    user.role !== UserRole.CUSTOMER ||
+    user.onboardingCompleted === false
+  ) {
     return null;
   }
 
@@ -73,7 +80,7 @@ export default function DashboardLayout({
         />
 
         {/* Dashboard Main Area */}
-        <main className="flex-1 min-w-0 max-w-full p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-x-hidden">
+        <main className="flex-1 min-w-0 max-w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 max-w-7xl mx-auto w-full overflow-x-hidden">
           {children}
         </main>
       </div>

@@ -33,6 +33,7 @@ import {
 import { generateSignedQrToken } from "../access/qr-token.util.js";
 import { accessService } from "../access/access.service.js";
 import { discountService } from "../discounts/discount.service.js";
+import { loyaltyService } from "../loyalty/loyalty.service.js";
 
 export class BookingService {
   constructor(private repo: BookingRepository = bookingRepository) {}
@@ -727,6 +728,7 @@ export class BookingService {
         );
         await this.repo.updateState(prisma, booking.id, BookingState.EXPIRED);
         await discountService.releaseHeldRedemptionTx(prisma, booking.id);
+        await loyaltyService.releaseBookingRedemptionHold(booking.id);
 
         console.log(
           `⏰ Booking hold expired for '${booking.reference}' (${booking.id})`,
@@ -799,6 +801,7 @@ export class BookingService {
       BookingState.CANCELLED,
     );
     await discountService.releaseHeldRedemptionTx(prisma, bookingId);
+    await loyaltyService.releaseBookingRedemptionHold(bookingId);
     await cancelHoldExpiryJob(bookingId);
 
     // Audit log

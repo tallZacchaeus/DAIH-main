@@ -37,6 +37,18 @@ export async function handleAccessAndBookingEvents(
       break;
     }
 
+    case "booking.completed": {
+      if (payload?.customerEmail) {
+        await enqueueNotification(
+          "booking.completed",
+          payload.customerEmail,
+          payload.customerName || "Member",
+          payload,
+        );
+      }
+      break;
+    }
+
     case "booking.confirmed": {
       if (payload?.bookingId) {
         const booking = await prisma.booking.findUnique({
@@ -129,5 +141,9 @@ outboxService.registerHandler(
 );
 outboxService.registerHandler(
   "booking.cancelled",
+  handleAccessAndBookingEvents,
+);
+outboxService.registerHandler(
+  "booking.completed",
   handleAccessAndBookingEvents,
 );

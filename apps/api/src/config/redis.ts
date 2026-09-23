@@ -61,6 +61,11 @@ export const redis = createRedisClient();
 let lastErrorLog = 0;
 let isConnected = false;
 
+export function isRedisAvailable(): boolean {
+  if (config.env === "test") return true;
+  return isConnected && redis.status === "ready";
+}
+
 redis.on("ready", () => {
   isConnected = true;
   safeLogger.info(

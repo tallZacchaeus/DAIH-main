@@ -1,6 +1,7 @@
 import { prisma } from "../../db/client.js";
 import { BookingState, Prisma } from "@prisma/client";
 import { ACTIVE_BOOKING_STATES } from "./booking.state-machine.js";
+import { outboxService } from "../events/outbox.service.js";
 
 export class BookingRepository {
   /**
@@ -378,35 +379,82 @@ export class BookingRepository {
   async sweepOverdueBookings(
     now: Date = new Date(),
   ): Promise<{ noShowCount: number; completedCount: number }> {
-    const [noShowResult, completedResult] = await Promise.all([
-      // 1. Confirmed bookings whose end time has passed and never checked in -> NO_SHOW
-      prisma.booking.updateMany({
-        where: {
-          state: BookingState.CONFIRMED,
-          endTime: { lte: now },
-          checkedInAt: null,
+    // 1. Confirmed bookings whose end time has passed and never checked in -> NO_SHOW
+    const noShowResult = await prisma.booking.updateMany({
+      where: {
+        state: BookingState.CONFIRMED,
+        endTime: { lte: now },
+        checkedInAt: null,
+      },
+      data: {
+        state: BookingState.NO_SHOW,
+      },
+    });
+
+    // 2. Find overdue checked-in, active, or checked-out bookings to mark COMPLETED
+    const bookingsToComplete = await prisma.booking.findMany({
+      where: {
+        state: {
+          in: [
+            BookingState.CHECKED_IN,
+            BookingState.ACTIVE,
+            BookingState.CHECKED_OUT,
+          ],
         },
-        data: {
-          state: BookingState.NO_SHOW,
-        },
-      }),
-      // 2. Checked-in / Active / Checked-out bookings whose end time has passed -> COMPLETED
-      prisma.booking.updateMany({
-        where: {
-          state: {
-            in: [
-              BookingState.CHECKED_IN,
-              BookingState.ACTIVE,
-              BookingState.CHECKED_OUT,
-            ],
-          },
-          endTime: { lte: now },
-        },
-        data: {
-          state: BookingState.COMPLETED,
-        },
-      }),
-    ]);
+        endTime: { lte: now },
+      },
+      select: {
+        id: true,
+        reference: true,
+        resource: { select: { name: true } },
+        user: { select: { email: true, firstName: true, lastName: true } },
+        review: { select: { id: true } },
+      },
+    });
+
+    if (bookingsToComplete.length === 0) {
+      return {
+        noShowCount: noShowResult.count,
+        completedCount: 0,
+      };
+    }
+
+    const completedResult = await prisma.booking.updateMany({
+      where: {
+        id: { in: bookingsToComplete.map((b) => b.id) },
+      },
+      data: {
+        state: BookingState.COMPLETED,
+      },
+    });
+
+    // Dispatch booking.completed event so the review prompt email is sent to eligible members
+    for (const b of bookingsToComplete) {
+      if (!b.review && b.user?.email) {
+        const customerName =
+          `${b.user.firstName || ""} ${b.user.lastName || ""}`.trim() ||
+          b.user.email;
+        try {
+          await outboxService.recordEvent({
+            eventType: "booking.completed",
+            aggregateType: "Booking",
+            aggregateId: b.id,
+            payload: {
+              bookingId: b.id,
+              reference: b.reference,
+              customerEmail: b.user.email,
+              customerName,
+              resourceName: b.resource?.name || "Workspace",
+            },
+          });
+        } catch (err) {
+          console.warn(
+            `[sweepOverdueBookings] Could not emit booking.completed for ${b.id}:`,
+            err,
+          );
+        }
+      }
+    }
 
     return {
       noShowCount: noShowResult.count,

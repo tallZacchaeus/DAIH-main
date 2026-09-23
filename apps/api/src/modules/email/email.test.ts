@@ -106,6 +106,47 @@ describe("EmailService & Dynamic Database Templates", () => {
     expect(sent.html).toContain("1 hour");
   });
 
+  it("should generate properly formatted review request email upon booking completion", async () => {
+    emailService.getMockProvider().clear();
+
+    const result = await emailService.sendBookingCompletedReviewEmail(
+      "kemi@company.com",
+      "Kemi Adeleke",
+      "DAIH-2026-WKSP-9988",
+      "Hot Desk Flex A",
+      "booking-uuid-7788",
+    );
+
+    expect(result.success).toBe(true);
+    const sent = emailService.getMockProvider().sentEmails[0];
+    expect(sent.to).toBe("kemi@company.com");
+    expect(sent.subject).toContain("How was your session? Leave a Review");
+    expect(sent.html).toContain("DAIH-2026-WKSP-9988");
+    expect(sent.html).toContain("Hot Desk Flex A");
+    expect(sent.html).toContain("/bookings?reviewBookingId=booking-uuid-7788");
+    expect(sent.html).toContain("Leave a Review");
+  });
+
+  it("should generate departure summary email with review CTA button", async () => {
+    emailService.getMockProvider().clear();
+
+    const result = await emailService.sendCheckOutSummaryEmail(
+      "kemi@company.com",
+      "Kemi Adeleke",
+      "DAIH-2026-WKSP-9988",
+      "Hot Desk Flex A",
+      new Date().toISOString(),
+      "booking-uuid-7788",
+    );
+
+    expect(result.success).toBe(true);
+    const sent = emailService.getMockProvider().sentEmails[0];
+    expect(sent.to).toBe("kemi@company.com");
+    expect(sent.subject).toContain("Departure Recorded");
+    expect(sent.html).toContain("/bookings?reviewBookingId=booking-uuid-7788");
+    expect(sent.html).toContain("Leave a Review");
+  });
+
   it("should correctly interpolate variables and conditionals in templates", () => {
     const rawTemplate =
       "Hello {{name}}, your code is {{code}}.{{#if extra}} Extra: {{extra}}{{/if}}";

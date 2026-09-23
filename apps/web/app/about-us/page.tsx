@@ -1,9 +1,32 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { api } from "@daih/api-client";
+import { SupportContactChannelsDTO } from "@daih/types";
 
 export default function AboutUsPage() {
+  const [contact, setContact] = useState<SupportContactChannelsDTO | null>(
+    null,
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+    api.support
+      .get()
+      .then((res) => {
+        if (isMounted && res?.contact) {
+          setContact(res.contact);
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not load contact details from API:", err?.message);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   return (
     <>
       <section
@@ -220,12 +243,26 @@ export default function AboutUsPage() {
                 How can I contact DAIH?
               </label>
               <div className="panel-content">
-                Email:{" "}
-                <a href="mailto:dareadeboyeinnovationhub@gmail.com">
-                  dareadeboyeinnovationhub@gmail.com
-                </a>
-                <br />
-                Phone: <a href="tel:+2347042504389">07042504389</a>
+                {contact?.email && (
+                  <div>
+                    Email:{" "}
+                    <a href={`mailto:${contact.email}`}>{contact.email}</a>
+                  </div>
+                )}
+                {contact?.phone && (
+                  <div>
+                    Phone:{" "}
+                    <a href={`tel:${contact.phone.replace(/\s+/g, "")}`}>
+                      {contact.phone}
+                    </a>
+                  </div>
+                )}
+                {!contact?.email && !contact?.phone && (
+                  <div>
+                    Please visit our <Link href="/contact">Contact Page</Link>{" "}
+                    or reach out to front desk reception on site.
+                  </div>
+                )}
               </div>
             </div>
           </div>

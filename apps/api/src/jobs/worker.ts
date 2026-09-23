@@ -5,6 +5,7 @@ import { outboxService } from "../modules/events/outbox.service.js";
 import "../modules/events/handlers/identity-email.handler.js";
 import "../modules/events/handlers/payment-events.handler.js";
 import "../modules/events/handlers/access-events.handler.js";
+import "../modules/events/handlers/loyalty-events.handler.js";
 import { notificationWorker } from "../modules/notifications/notification-dispatch.job.js";
 import { bookingService } from "../modules/booking/booking.service.js";
 import { bookingRepository } from "../modules/booking/booking.repository.js";
@@ -181,12 +182,89 @@ const anonymizationInterval = setInterval(
   7 * 24 * 60 * 60 * 1000,
 );
 
+// ─── PeeDee Coin 12-Month Inactivity Expiry Sweeper ─────────────────────────
+import { coinService } from "../modules/loyalty/coin.service.js";
+
+let isExpiringCoins = false;
+export async function runCoinExpiryCycle() {
+  if (isExpiringCoins) return;
+  isExpiringCoins = true;
+  try {
+    const summary = await coinService.expireInactiveCoins();
+    if (summary.expiredAccounts > 0) {
+      console.log(
+        `🪙 Coin expiry worker: Expired ${summary.totalCoinsExpired} PD coins across ${summary.expiredAccounts} dormant account(s)`,
+      );
+    }
+  } catch (err: any) {
+    console.error("Coin expiry worker error:", err?.message);
+  } finally {
+    isExpiringCoins = false;
+  }
+}
+
+// Initial expiry run 3 minutes after startup
+setTimeout(runCoinExpiryCycle, 180000);
+const coinExpiryInterval = setInterval(runCoinExpiryCycle, 24 * 60 * 60 * 1000);
+
+// ─── Campaign Management Sweepers (Quiet Hours & RFM) ──────────────────────
+import { campaignService } from "../modules/campaigns/campaign.service.js";
+
+// Deferred Quiet Hours dispatcher (runs every 5 minutes to release messages at 08:05 WAT)
+let isProcessingQuietHours = false;
+export async function runQuietHoursDispatchCycle() {
+  if (isProcessingQuietHours) return;
+  isProcessingQuietHours = true;
+  try {
+    const result = await campaignService.processDeferredQuietHoursExecutions();
+    if (result.dispatched > 0) {
+      console.log(
+        `🌅 Campaign worker: Dispatched ${result.dispatched} deferred campaign message(s) post-quiet-hours`,
+      );
+    }
+  } catch (err: any) {
+    console.error("Quiet hours dispatch error:", err?.message);
+  } finally {
+    isProcessingQuietHours = false;
+  }
+}
+
+const quietHoursInterval = setInterval(
+  runQuietHoursDispatchCycle,
+  5 * 60 * 1000,
+);
+
+// Nightly RFM scoring cycle (runs every 24 hours; first run 5 minutes after startup)
+let isScoringRfm = false;
+export async function runRfmScoringCycle() {
+  if (isScoringRfm) return;
+  isScoringRfm = true;
+  try {
+    const result = await campaignService.calculateRfmScores();
+    if (result.processedCount > 0) {
+      console.log(
+        `📊 RFM scoring worker: Updated RFM segmentation for ${result.processedCount} customer(s)`,
+      );
+    }
+  } catch (err: any) {
+    console.error("RFM scoring worker error:", err?.message);
+  } finally {
+    isScoringRfm = false;
+  }
+}
+
+setTimeout(runRfmScoringCycle, 300000);
+const rfmInterval = setInterval(runRfmScoringCycle, 24 * 60 * 60 * 1000);
+
 process.on("SIGTERM", async () => {
   console.log("Stopping worker gracefully...");
   clearInterval(sweepInterval);
   clearInterval(sweepBookingsInterval);
   clearInterval(retentionInterval);
   clearInterval(anonymizationInterval);
+  clearInterval(coinExpiryInterval);
+  clearInterval(quietHoursInterval);
+  clearInterval(rfmInterval);
   await holdExpiryWorker.close();
   await notificationWorker.close();
 });

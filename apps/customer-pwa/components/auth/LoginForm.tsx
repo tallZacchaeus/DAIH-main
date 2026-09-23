@@ -17,6 +17,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
+import { GoogleAuthButton } from "./GoogleAuthButton";
 
 export const LoginForm: React.FC = () => {
   const router = useRouter();
@@ -213,6 +214,18 @@ export const LoginForm: React.FC = () => {
         </div>
       )}
 
+      {/* Google Sign-In Option */}
+      <div className="space-y-4">
+        <GoogleAuthButton text="signin_with" disabled={isLoading} />
+
+        <div className="relative flex items-center justify-center my-2">
+          <div className="border-t border-slate-200 w-full" />
+          <span className="bg-white px-3 text-xs uppercase tracking-wider text-slate-400 font-semibold absolute">
+            Or continue with email
+          </span>
+        </div>
+      </div>
+
       {/* Login Form with noValidate */}
       <form noValidate onSubmit={handleLogin} className="space-y-4">
         {/* Email Field */}
@@ -231,6 +244,7 @@ export const LoginForm: React.FC = () => {
               id="email"
               name="email"
               type="email"
+              autoComplete="email"
               placeholder="name@company.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -264,6 +278,7 @@ export const LoginForm: React.FC = () => {
               id="password"
               name="password"
               type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

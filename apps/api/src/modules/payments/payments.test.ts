@@ -98,6 +98,7 @@ describe("Milestone 1.4: Payment Engine & Reconciliation Module", () => {
     });
     customer2UserId = customer2.id;
 
+    const runId = Date.now().toString().slice(-6);
     const financeUser = await prisma.user.upsert({
       where: { email: "finance.payment@daih.ng" },
       update: {
@@ -105,13 +106,12 @@ describe("Milestone 1.4: Payment Engine & Reconciliation Module", () => {
         isVerified: true,
         firstName: "Fola",
         lastName: "Accountant",
-        clientId: "DAIH-2026-FIN001",
       },
       create: {
         email: "finance.payment@daih.ng",
         firstName: "Fola",
         lastName: "Accountant",
-        clientId: "DAIH-2026-FIN001",
+        clientId: `DAIH-FIN-${runId}`,
         role: UserRole.FINANCE_OFFICER,
         isVerified: true,
       },
@@ -125,7 +125,7 @@ describe("Milestone 1.4: Payment Engine & Reconciliation Module", () => {
         email: "ops.payment@daih.ng",
         firstName: "Kola",
         lastName: "Operator",
-        clientId: "DAIH-2026-OPS001",
+        clientId: `DAIH-OPS-${runId}`,
         role: UserRole.OPERATIONS_ADMIN,
         isVerified: true,
       },

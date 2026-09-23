@@ -817,4 +817,159 @@ describe("Milestone 1.5: QR & Reception Module", () => {
       expect(verifyRes.body.data.booking?.wifiCredentials).toBeFalsy();
     });
   });
+
+  describe("8. Multi-Day Pass Scheduled Daily Slot Window Enforcement", () => {
+    it("blocks check-in after today's scheduled slot has passed even though booking has not expired", async () => {
+      const now = new Date();
+      // Slot ended 1 hour ago today, started 3 hours ago today
+      const pastSlotEnd = new Date(now);
+      pastSlotEnd.setHours(now.getHours() - 1);
+      const pastSlotStart = new Date(now);
+      pastSlotStart.setHours(now.getHours() - 3);
+
+      // Multi-day booking spanning pastSlotStart (2 days ago) to pastSlotEnd (5 days later)
+      const testMultiStart = new Date(now);
+      testMultiStart.setDate(testMultiStart.getDate() - 2);
+      testMultiStart.setHours(
+        pastSlotStart.getHours(),
+        pastSlotStart.getMinutes(),
+        0,
+        0,
+      );
+
+      const testMultiEnd = new Date(now);
+      testMultiEnd.setDate(testMultiEnd.getDate() + 5);
+      testMultiEnd.setHours(
+        pastSlotEnd.getHours(),
+        pastSlotEnd.getMinutes(),
+        0,
+        0,
+      );
+
+      const endedSlotBooking = await prisma.booking.create({
+        data: {
+          reference: `DAIH-BK-SLOTEND${Date.now().toString().slice(-6)}`,
+          resourceId: testResourceId,
+          userId: customerUserId,
+          startTime: testMultiStart,
+          endTime: testMultiEnd,
+          state: BookingState.CONFIRMED,
+          totalAmount: 40000,
+          currency: "NGN",
+        },
+      });
+
+      const endedSlotToken = generateSignedQrToken({
+        bookingId: endedSlotBooking.id,
+        reference: endedSlotBooking.reference,
+        userId: customerUserId,
+        startTime: testMultiStart.toISOString(),
+        endTime: testMultiEnd.toISOString(),
+        issuedAt: Date.now(),
+      });
+      await prisma.booking.update({
+        where: { id: endedSlotBooking.id },
+        data: { qrToken: endedSlotToken },
+      });
+
+      // Verification should reject because today's slot ended
+      const verifyRes = await request(app)
+        .post("/api/v1/access/verify-qr")
+        .set("Authorization", `Bearer ${receptionToken}`)
+        .send({ token: endedSlotToken });
+
+      expect(verifyRes.status).toBe(200);
+      expect(verifyRes.body.data.valid).toBe(false);
+      expect(verifyRes.body.data.canCheckIn).toBe(false);
+      expect(verifyRes.body.data.rejectionTitle).toBe("Daily Slot Concluded");
+      expect(verifyRes.body.data.rejectionReason).toBe("EXPIRED");
+
+      // Check-In endpoint should also reject with 400 EXPIRED
+      const checkInRes = await request(app)
+        .post(`/api/v1/access/checkin/${endedSlotBooking.id}`)
+        .set("Authorization", `Bearer ${receptionToken}`)
+        .send({ terminalId: "REC-GATE-01" });
+
+      expect(checkInRes.status).toBe(400);
+      expect(checkInRes.body.code).toBe("EXPIRED");
+      expect(checkInRes.body.message).toContain("concluded");
+    });
+
+    it("blocks check-in before today's scheduled slot opens on an active multi-day pass", async () => {
+      const now = new Date();
+      // Slot opens 2 hours from now and closes 4 hours from now
+      const futureSlotStart = new Date(now);
+      futureSlotStart.setHours(now.getHours() + 2);
+      const futureSlotEnd = new Date(now);
+      futureSlotEnd.setHours(now.getHours() + 4);
+
+      const testMultiStart = new Date(now);
+      testMultiStart.setDate(testMultiStart.getDate() - 2);
+      testMultiStart.setHours(
+        futureSlotStart.getHours(),
+        futureSlotStart.getMinutes(),
+        0,
+        0,
+      );
+
+      const testMultiEnd = new Date(now);
+      testMultiEnd.setDate(testMultiEnd.getDate() + 5);
+      testMultiEnd.setHours(
+        futureSlotEnd.getHours(),
+        futureSlotEnd.getMinutes(),
+        0,
+        0,
+      );
+
+      const earlySlotBooking = await prisma.booking.create({
+        data: {
+          reference: `DAIH-BK-SLOTEARLY${Date.now().toString().slice(-6)}`,
+          resourceId: testResourceId,
+          userId: customerUserId,
+          startTime: testMultiStart,
+          endTime: testMultiEnd,
+          state: BookingState.CONFIRMED,
+          totalAmount: 40000,
+          currency: "NGN",
+        },
+      });
+
+      const earlySlotToken = generateSignedQrToken({
+        bookingId: earlySlotBooking.id,
+        reference: earlySlotBooking.reference,
+        userId: customerUserId,
+        startTime: testMultiStart.toISOString(),
+        endTime: testMultiEnd.toISOString(),
+        issuedAt: Date.now(),
+      });
+      await prisma.booking.update({
+        where: { id: earlySlotBooking.id },
+        data: { qrToken: earlySlotToken },
+      });
+
+      // Verification should reject as TOO_EARLY for today's slot
+      const verifyRes = await request(app)
+        .post("/api/v1/access/verify-qr")
+        .set("Authorization", `Bearer ${receptionToken}`)
+        .send({ token: earlySlotToken });
+
+      expect(verifyRes.status).toBe(200);
+      expect(verifyRes.body.data.valid).toBe(false);
+      expect(verifyRes.body.data.canCheckIn).toBe(false);
+      expect(verifyRes.body.data.rejectionTitle).toBe(
+        "Daily Check-In Not Yet Open",
+      );
+      expect(verifyRes.body.data.rejectionReason).toBe("TOO_EARLY");
+
+      // Check-In endpoint should also reject with 400 TOO_EARLY
+      const checkInRes = await request(app)
+        .post(`/api/v1/access/checkin/${earlySlotBooking.id}`)
+        .set("Authorization", `Bearer ${receptionToken}`)
+        .send({ terminalId: "REC-GATE-01" });
+
+      expect(checkInRes.status).toBe(400);
+      expect(checkInRes.body.code).toBe("TOO_EARLY");
+      expect(checkInRes.body.message).toContain("opens at");
+    });
+  });
 });

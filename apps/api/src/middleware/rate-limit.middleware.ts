@@ -1,9 +1,12 @@
 import { Request, Response, NextFunction } from "express";
 import rateLimit from "express-rate-limit";
 import { RedisStore } from "rate-limit-redis";
-import { redis } from "../config/redis.js";
+import { redis, isRedisAvailable } from "../config/redis.js";
 import { config } from "../config/env.js";
 import { getVerifiedClientIp } from "../utils/fingerprint.js";
+import { safeLogger, sanitizeMessage } from "../utils/sanitizer.js";
+
+let hasLoggedRateLimitStoreError = false;
 
 function createRedisStore(prefix: string) {
   if (
@@ -15,8 +18,22 @@ function createRedisStore(prefix: string) {
   }
   try {
     return new RedisStore({
-      // @ts-expect-error - rate-limit-redis / ioredis sendCommand signature
-      sendCommand: (...args: string[]) => redis.call(...args),
+      sendCommand: async (...args: string[]) => {
+        try {
+          return await (redis.call as any)(...args);
+        } catch (err: any) {
+          if (!hasLoggedRateLimitStoreError && config.env !== "test") {
+            hasLoggedRateLimitStoreError = true;
+            safeLogger.warn(
+              `[RateLimit:StoreNotice] Redis rate limit store unreachable (${sanitizeMessage(err?.message || err)}). Permitting request.`,
+            );
+            setTimeout(() => {
+              hasLoggedRateLimitStoreError = false;
+            }, 60000);
+          }
+          throw err;
+        }
+      },
       prefix: `daih:rl:${prefix}:`,
     });
   } catch (err: any) {
@@ -42,6 +59,7 @@ export const loginIpRateLimiter = rateLimit({
   max: Math.max(20, config.rateLimit.loginMax * 4),
   standardHeaders: true,
   legacyHeaders: false,
+  passOnStoreError: true,
   store: createRedisStore("login-ip"),
   keyGenerator: (req: Request) => {
     return getVerifiedClientIp(req) || "unknown";
@@ -59,6 +77,7 @@ export const loginAccountRateLimiter = rateLimit({
   max: config.rateLimit.loginMax,
   standardHeaders: true,
   legacyHeaders: false,
+  passOnStoreError: true,
   store: createRedisStore("login-acct"),
   keyGenerator: (req: Request) => {
     const email = req.body?.email
@@ -92,6 +111,7 @@ export const registrationRateLimiter = rateLimit({
   max: config.rateLimit.registerMax,
   standardHeaders: true,
   legacyHeaders: false,
+  passOnStoreError: true,
   store: createRedisStore("reg"),
   keyGenerator: (req: Request) => {
     return getVerifiedClientIp(req) || "unknown";
@@ -108,6 +128,7 @@ export const verificationResendRateLimiter = rateLimit({
   max: config.rateLimit.verifyResendMax,
   standardHeaders: true,
   legacyHeaders: false,
+  passOnStoreError: true,
   store: createRedisStore("vresend"),
   keyGenerator: (req: Request) => {
     const email = req.body?.email
@@ -127,6 +148,7 @@ export const passwordResetRateLimiter = rateLimit({
   max: config.rateLimit.passwordResetMax,
   standardHeaders: true,
   legacyHeaders: false,
+  passOnStoreError: true,
   store: createRedisStore("pwreset"),
   keyGenerator: (req: Request) => {
     const email = req.body?.email
@@ -146,6 +168,7 @@ export const refreshRateLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  passOnStoreError: true,
   store: createRedisStore("refresh"),
   keyGenerator: (req: Request) => {
     return getVerifiedClientIp(req) || "unknown";

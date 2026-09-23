@@ -43,11 +43,21 @@ export const ForgotPasswordCard: React.FC = () => {
     return true;
   };
 
+  const isSubmittingRef = React.useRef(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading || isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+
     setErrorMessage(null);
 
-    if (!validateForm()) return;
+    if (!validateForm()) {
+      setTimeout(() => {
+        isSubmittingRef.current = false;
+      }, 600);
+      return;
+    }
 
     setIsLoading(true);
 
@@ -67,6 +77,7 @@ export const ForgotPasswordCard: React.FC = () => {
       toast.error(msg, { title: "Reset Request Failed" });
     } finally {
       setIsLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -172,6 +183,7 @@ export const ForgotPasswordCard: React.FC = () => {
                     id="email"
                     name="email"
                     type="email"
+                    autoComplete="email"
                     placeholder="you@company.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}

@@ -3,6 +3,7 @@ import {
   checkSessionRevocation,
   InfrastructureUnavailableError,
   postgresCircuitBreaker,
+  clearInProcessCache,
 } from "./revocation-cache.js";
 import { redis } from "../config/redis.js";
 import { prisma } from "../db/client.js";
@@ -11,6 +12,7 @@ describe("Revocation Cache & Resilient Failover", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     postgresCircuitBreaker.reset();
+    clearInProcessCache();
   });
 
   it("returns { isValid: false } when Redis identifies session as revoked and warms in-process cache", async () => {
@@ -101,5 +103,45 @@ describe("Revocation Cache & Resilient Failover", () => {
     await expect(checkSessionRevocation("session-789")).rejects.toThrow(
       InfrastructureUnavailableError,
     );
+  });
+
+  it("permits in-flight requests during rotation grace window when an active family session exists", async () => {
+    vi.spyOn(redis, "get").mockRejectedValue(new Error("Redis offline"));
+
+    // Session was marked isRevoked: true just 5 seconds ago during rotation
+    vi.spyOn(prisma.authSession, "findUnique").mockResolvedValue({
+      id: "session-old-rotated",
+      tokenFamily: "family-grace-123",
+      isRevoked: true,
+      updatedAt: new Date(Date.now() - 5000), // 5 seconds ago
+      expiresAt: new Date(Date.now() + 600000), // access token still unexpired
+    } as any);
+
+    // Active replacement session in the same token family exists
+    vi.spyOn(prisma.authSession, "findFirst").mockResolvedValue({
+      id: "session-new-active",
+    } as any);
+
+    const result = await checkSessionRevocation("session-old-rotated");
+    expect(result).toEqual({ isValid: true });
+  });
+
+  it("rejects revoked session immediately if no active family session exists (e.g. explicit logout)", async () => {
+    vi.spyOn(redis, "get").mockRejectedValue(new Error("Redis offline"));
+
+    // Session was revoked during explicit logout
+    vi.spyOn(prisma.authSession, "findUnique").mockResolvedValue({
+      id: "session-logged-out",
+      tokenFamily: "family-logout-456",
+      isRevoked: true,
+      updatedAt: new Date(Date.now() - 2000),
+      expiresAt: new Date(Date.now() + 600000),
+    } as any);
+
+    // No active session in this family (all were revoked on logout)
+    vi.spyOn(prisma.authSession, "findFirst").mockResolvedValue(null);
+
+    const result = await checkSessionRevocation("session-logged-out");
+    expect(result).toEqual({ isValid: false });
   });
 });

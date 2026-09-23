@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   FinanceHeader,
   DateRangeOption,
@@ -154,6 +155,8 @@ export default function FinancialReportsPage() {
     loadFinancialTelemetry();
   }, [loadFinancialTelemetry]);
 
+  const router = useRouter();
+
   // Calculate live KPIs
   const kpiData = useMemo(() => {
     const successful = transactions.filter(
@@ -165,6 +168,27 @@ export default function FinancialReportsPage() {
       (sum, t) => sum + (Number(t.amount) || 0),
       0,
     );
+
+    const refunded = transactions.filter(
+      (t) =>
+        t.status === PaymentStatus.REFUNDED ||
+        t.status === PaymentStatus.PARTIALLY_REFUNDED ||
+        (t.refundAmount != null && Number(t.refundAmount) > 0),
+    );
+    const totalRefunded =
+      reconciliation?.totalRefunded !== undefined &&
+      reconciliation?.totalRefunded !== null
+        ? Number(reconciliation.totalRefunded)
+        : refunded.reduce(
+            (sum, t) => sum + (Number(t.refundAmount) || Number(t.amount) || 0),
+            0,
+          );
+
+    const netRevenue = Math.max(0, totalCollected - totalRefunded);
+    const retainedPercent =
+      totalCollected > 0
+        ? Math.round((netRevenue / totalCollected) * 100)
+        : 100;
 
     const avgTransaction =
       successful.length > 0 ? totalCollected / successful.length : 0;
@@ -184,7 +208,23 @@ export default function FinancialReportsPage() {
       })}`,
       collectedBadge: `${successful.length} paid txs`,
       isCollectedUp: true,
-      collectedSubtext: `Gross settlements in ${selectedRange}`,
+      collectedSubtext: `Gross in ${selectedRange}`,
+
+      totalRefunded: `₦${totalRefunded.toLocaleString("en-NG", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`,
+      refundedBadge: `${refunded.length} refunded`,
+      isRefundedUp: false,
+      refundedSubtext: `Disbursed in ${selectedRange}`,
+
+      netRevenue: `₦${netRevenue.toLocaleString("en-NG", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`,
+      netRevenueBadge: `${retainedPercent}% retained`,
+      isNetRevenueUp: true,
+      netRevenueSubtext: `Net in ${selectedRange}`,
 
       avgBookingValue: `₦${avgTransaction.toLocaleString("en-NG", {
         minimumFractionDigits: 2,
@@ -193,14 +233,6 @@ export default function FinancialReportsPage() {
       avgBookingBadge: `${successful.length} bookings`,
       avgBookingSubtext: `Per completed transaction`,
 
-      netRevenue: `₦${totalCollected.toLocaleString("en-NG", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`,
-      netRevenueBadge: "100% retained",
-      isNetRevenueUp: true,
-      netRevenueSubtext: `100% retained in ${selectedRange}`,
-
       outstandingAmount: `₦${outstandingAmount.toLocaleString("en-NG", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
@@ -208,7 +240,7 @@ export default function FinancialReportsPage() {
       pendingCount: pending.length,
       pendingSubtext: `${pending.length} pending in ${selectedRange}`,
     };
-  }, [transactions, selectedRange]);
+  }, [transactions, reconciliation, selectedRange]);
 
   // Calculate Revenue Breakdown by Resource
   const breakdownItems: BreakdownItem[] = useMemo(() => {
@@ -329,6 +361,10 @@ export default function FinancialReportsPage() {
     });
   };
 
+  const handleViewRefunds = () => {
+    router.push("/finance/refunds");
+  };
+
   return (
     <div className="space-y-6">
       {/* Financial Reports Header & Date Filter */}
@@ -352,6 +388,7 @@ export default function FinancialReportsPage() {
         loading={initialLoading}
         data={kpiData}
         onViewPendingInvoices={handleViewPendingInvoices}
+        onViewRefunds={handleViewRefunds}
       />
 
       {/* Charts & Analytics Section */}

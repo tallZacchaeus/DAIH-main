@@ -24,17 +24,23 @@ export enum Permission {
   USERS_MANAGE = "users:manage",
   AUDIT_VIEW = "audit:view",
   SYSTEM_CONFIG = "system:config",
+  COINS_READ_OWN = "coins:read_own",
+  COINS_READ_ALL = "coins:read_all",
+  COINS_ADJUST = "coins:adjust",
+  COINS_CONFIG = "coins:config",
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   [UserRole.CUSTOMER]: [
     Permission.BOOKINGS_CREATE,
     Permission.BOOKINGS_READ_OWN,
+    Permission.COINS_READ_OWN,
   ],
   [UserRole.RECEPTION_OFFICER]: [
     Permission.BOOKINGS_READ_ALL,
     Permission.QR_SCAN,
     Permission.CHECK_IN_OUT,
+    Permission.COINS_READ_ALL,
   ],
   [UserRole.SECURITY_OFFICER]: [Permission.QR_SCAN, Permission.CHECK_IN_OUT],
   [UserRole.OPERATIONS_ADMIN]: [
@@ -44,6 +50,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.RESOURCES_MANAGE,
     Permission.REPORTS_VIEW,
     Permission.REPORTS_EXPORT,
+    Permission.COINS_READ_ALL,
   ],
   [UserRole.FINANCE_OFFICER]: [
     Permission.BOOKINGS_READ_ALL,
@@ -51,10 +58,13 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.PAYMENTS_REFUND,
     Permission.REPORTS_VIEW,
     Permission.REPORTS_EXPORT,
+    Permission.COINS_READ_ALL,
+    Permission.COINS_ADJUST,
   ],
   [UserRole.MANAGEMENT_VIEWER]: [
     Permission.REPORTS_VIEW,
     Permission.REPORTS_EXPORT,
+    Permission.COINS_READ_ALL,
   ],
   [UserRole.SUPER_ADMIN]: Object.values(Permission),
 };

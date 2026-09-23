@@ -208,7 +208,21 @@ export class PaymentsRepository {
     const skip = (page - 1) * limit;
 
     const where: Prisma.TransactionWhereInput = {
-      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.status
+        ? String(filters.status).toUpperCase() === "REFUNDED"
+          ? {
+              OR: [
+                { status: PaymentStatus.REFUNDED },
+                { status: PaymentStatus.PARTIALLY_REFUNDED },
+                { refundAmount: { gt: 0 } },
+              ],
+            }
+          : String(filters.status).toUpperCase() === "PAID"
+            ? {
+                status: PaymentStatus.SUCCESSFUL,
+              }
+            : { status: filters.status }
+        : {}),
       ...(filters.method ? { method: filters.method } : {}),
       ...(filters.startDate || filters.endDate
         ? {
@@ -257,8 +271,19 @@ export class PaymentsRepository {
         orderBy: { createdAt: "desc" },
         include: {
           booking: {
-            include: {
-              resource: true,
+            select: {
+              id: true,
+              reference: true,
+              state: true,
+              startTime: true,
+              endTime: true,
+              resource: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: true,
+                },
+              },
             },
           },
           user: {
@@ -271,7 +296,13 @@ export class PaymentsRepository {
               phoneNumber: true,
             },
           },
-          invoice: true,
+          invoice: {
+            select: {
+              id: true,
+              invoiceNumber: true,
+              issuedAt: true,
+            },
+          },
         },
       }),
     ]);

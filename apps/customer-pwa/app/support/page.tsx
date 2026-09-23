@@ -53,7 +53,37 @@ const FAQS: FAQItem[] = [
     category: "Modifications",
     question: "Can I reschedule or cancel my reservation?",
     answer:
-      "Yes. You can manage or cancel your upcoming booking directly from the 'My Bookings' page up to 24 hours prior to the scheduled start time according to our reservation policy. Please note that bookings are strictly non-refundable.",
+      "Yes. You can manage or cancel your upcoming booking directly from the 'My Bookings' page up to 24 hours prior to the scheduled start time according to our reservation policy. While bookings are generally non-refundable, exceptional refund requests can be reviewed by our team.",
+  },
+  {
+    category: "Refunds",
+    question: "What is your refund policy, and how do I request a refund?",
+    answer:
+      "Under our general terms, reservations operate a standard no-refund policy. However, exceptional refunds may be considered under qualifying circumstances (such as facility equipment failures, space unavailability, or verifiable duplicate payments). To submit a refund request, please email support at support@daih.ng with your Booking Reference ID, detailed reason for the request, and any relevant details. Our Operations team will evaluate your case with Finance Administration.",
+  },
+  {
+    category: "PeeDee Coins",
+    question: "How do I earn PeeDee Coins?",
+    answer:
+      "You earn PeeDee Coins automatically on every confirmed booking check-in (1 PD Coin per ₦200 spent, boosted to 1.25x for Silver members and 1.5x for Gold VIP members). You also earn 5% on your referred friends' booking spend (min 50 PD on their first check-in), 50 PD birthday bonuses, and 30 PD monthly streak rewards.",
+  },
+  {
+    category: "PeeDee Coins",
+    question: "When do my coins expire?",
+    answer:
+      "PeeDee Coins are valid for 12 rolling months from the date they are earned. Earning or redeeming coins regularly keeps your account active and prevents reward forfeiture.",
+  },
+  {
+    category: "PeeDee Coins",
+    question: "Why can coins only cover half my booking?",
+    answer:
+      "To ensure a sustainable and fair loyalty ecosystem, PD Coins can cover up to 50% (maximum discount percentage) of your booking total before payment. Coins are valued at 100 PDC = ₦100, with a minimum redemption floor of 100 PDC.",
+  },
+  {
+    category: "Referrals",
+    question: "Why has my referral not paid out yet?",
+    answer:
+      "Referral rewards pay out automatically when your referred friend completes their first verified in-person check-in (access.checked_in) for a paid reservation within 90 days of signup. If they have only created an account or haven't checked in yet, the reward will trigger as soon as they arrive at the hub.",
   },
   {
     category: "Payments",
@@ -69,45 +99,27 @@ const FAQS: FAQItem[] = [
   },
 ];
 
-const DEFAULT_CONTACT = {
-  phone: "+234 800 000 3244",
-  whatsapp: "+234 812 345 6789",
-  email: "support@daih.com",
-  address: "Dominion Allianze Innovation Hub (DAIH), Lagos, Nigeria",
-  operatingHours: "Mon - Sat: 8:00 AM – 8:00 PM\nSun: Closed (Maintenance)",
-};
+import { useContactSettings } from "../../hooks/useContactSettings";
 
 export default function CustomerSupportPage() {
   const { user, isAuthenticated } = useAuth();
-  const [contact, setContact] = useState(DEFAULT_CONTACT);
-  const [faqs, setFaqs] = useState<FAQItem[]>(FAQS);
+  const { contact } = useContactSettings();
+  const [faqs, setFaqs] = useState<FAQItem[]>([]);
 
   useEffect(() => {
     let isMounted = true;
     api.support
       .get()
       .then((res) => {
-        if (isMounted && res) {
-          if (res.contact) {
-            setContact({
-              phone: res.contact.phone || DEFAULT_CONTACT.phone,
-              whatsapp: res.contact.whatsapp || DEFAULT_CONTACT.whatsapp,
-              email: res.contact.email || DEFAULT_CONTACT.email,
-              address: res.contact.address || DEFAULT_CONTACT.address,
-              operatingHours:
-                res.contact.operatingHours || DEFAULT_CONTACT.operatingHours,
-            });
-          }
-          if (res.faqs && res.faqs.length > 0) {
-            const published = res.faqs.filter((f) => f.isPublished !== false);
-            if (published.length > 0) {
-              setFaqs(published);
-            }
+        if (isMounted && res?.faqs && res.faqs.length > 0) {
+          const published = res.faqs.filter((f) => f.isPublished !== false);
+          if (published.length > 0) {
+            setFaqs(published);
           }
         }
       })
       .catch((err) => {
-        console.warn("Using fallback support data:", err?.message);
+        console.warn("Could not load support FAQs:", err?.message);
       });
 
     return () => {
@@ -214,13 +226,19 @@ export default function CustomerSupportPage() {
                 hours.
               </p>
             </div>
-            <a
-              href={`tel:${contact.phone.replace(/\s+/g, "")}`}
-              className="mt-4 text-xs font-bold text-[#23055c] hover:underline inline-flex items-center gap-1"
-            >
-              <span>{contact.phone}</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
+            {contact?.phone ? (
+              <a
+                href={`tel:${contact.phone.replace(/\s+/g, "")}`}
+                className="mt-4 text-xs font-bold text-[#23055c] hover:underline inline-flex items-center gap-1"
+              >
+                <span>{contact.phone}</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            ) : (
+              <span className="mt-4 text-xs text-slate-400">
+                Available on site
+              </span>
+            )}
           </div>
 
           {/* WhatsApp Support */}
@@ -237,15 +255,21 @@ export default function CustomerSupportPage() {
                 workspace checks.
               </p>
             </div>
-            <a
-              href={`https://wa.me/${contact.whatsapp.replace(/[^0-9]/g, "")}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 text-xs font-bold text-emerald-600 hover:underline inline-flex items-center gap-1"
-            >
-              <span>Chat on WhatsApp</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
+            {contact?.whatsapp ? (
+              <a
+                href={`https://wa.me/${contact.whatsapp.replace(/[^0-9]/g, "")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 text-xs font-bold text-emerald-600 hover:underline inline-flex items-center gap-1"
+              >
+                <span>Chat on WhatsApp</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            ) : (
+              <span className="mt-4 text-xs text-slate-400">
+                Support chat offline
+              </span>
+            )}
           </div>
 
           {/* Email Support */}
@@ -262,13 +286,19 @@ export default function CustomerSupportPage() {
                 inquiries.
               </p>
             </div>
-            <a
-              href={`mailto:${contact.email}`}
-              className="mt-4 text-xs font-bold text-blue-600 hover:underline inline-flex items-center gap-1"
-            >
-              <span>{contact.email}</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
+            {contact?.email ? (
+              <a
+                href={`mailto:${contact.email}`}
+                className="mt-4 text-xs font-bold text-blue-600 hover:underline inline-flex items-center gap-1"
+              >
+                <span>{contact.email}</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            ) : (
+              <span className="mt-4 text-xs text-slate-400">
+                Email loading...
+              </span>
+            )}
           </div>
 
           {/* Hub Location & Hours */}
@@ -281,12 +311,14 @@ export default function CustomerSupportPage() {
                 Hub Working Hours
               </h3>
               <p className="text-xs text-slate-500 whitespace-pre-line">
-                {contact.operatingHours}
+                {contact?.operatingHours || "Mon - Sat: 8:00 AM – 6:00 PM"}
               </p>
             </div>
             <div className="mt-4 text-xs text-slate-400 flex items-center gap-1">
               <MapPin className="w-3.5 h-3.5 shrink-0 text-amber-600" />
-              <span className="truncate">{contact.address}</span>
+              <span className="truncate">
+                {contact?.address || "DAIH Hub, Redemption City"}
+              </span>
             </div>
           </div>
         </div>

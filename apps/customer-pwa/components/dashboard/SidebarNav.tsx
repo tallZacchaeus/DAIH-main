@@ -4,9 +4,10 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useAuth } from "@daih/api-client";
+import { useAuth, api } from "@daih/api-client";
 import { useToast } from "@daih/ui";
 import { resolveAvatarUrl } from "../../lib/image-utils";
+import { MemberTierBadge } from "../loyalty/MemberTierBadge";
 import {
   LayoutDashboard,
   Calendar,
@@ -21,6 +22,7 @@ import {
   ChevronRight,
   Loader2,
   Users,
+  Coins,
 } from "lucide-react";
 
 interface SidebarNavProps {
@@ -43,6 +45,47 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  const [wallet, setWallet] = useState<{
+    tier?: string;
+    tierMultiplier?: number;
+    lifetimeEarned?: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    let isMounted = true;
+
+    const fetchWallet = (force = false) => {
+      api.loyalty
+        .getMyWallet(force)
+        .then((w) => {
+          if (isMounted) {
+            setWallet({
+              tier: w.tier,
+              tierMultiplier: w.tierMultiplier,
+              lifetimeEarned: w.lifetimeEarned,
+            });
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchWallet(true);
+
+    const handleUpdate = () => fetchWallet(true);
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", handleUpdate);
+      window.addEventListener("daih:loyalty-updated", handleUpdate);
+    }
+
+    return () => {
+      isMounted = false;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", handleUpdate);
+        window.removeEventListener("daih:loyalty-updated", handleUpdate);
+      }
+    };
+  }, [user]);
 
   useEffect(() => {
     setAvatarError(false);
@@ -102,6 +145,12 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       active: pathname.startsWith("/referrals"),
     },
     {
+      label: "PD Coins",
+      href: "/loyalty",
+      icon: Coins,
+      active: pathname.startsWith("/loyalty"),
+    },
+    {
       label: "Settings",
       href: "/settings",
       icon: Settings,
@@ -120,9 +169,9 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
         >
           <Link href="/dashboard" className="flex items-center gap-2">
             <img
-              src="/images/logo.png"
+              src={collapsed ? "/images/icon.png" : "/images/logo.png"}
               alt="DAIH Hub"
-              className={`${collapsed ? "h-7" : "h-8"} w-auto object-contain transition-all`}
+              className={`${collapsed ? "h-7 w-7" : "h-8 w-auto"} object-contain transition-all`}
             />
           </Link>
 
@@ -184,9 +233,31 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
               <p className="text-[11px] text-slate-500 truncate">
                 {displayRole}
               </p>
+              <div className="mt-1.5 flex items-center">
+                <MemberTierBadge
+                  variant="pill"
+                  tier={wallet?.tier}
+                  lifetimeEarned={wallet?.lifetimeEarned || 0}
+                  multiplier={wallet?.tierMultiplier}
+                  showMultiplier={true}
+                />
+              </div>
             </div>
           )}
         </Link>
+        {collapsed && (
+          <div className="flex justify-center mb-5">
+            <MemberTierBadge
+              variant="pill"
+              tier={wallet?.tier}
+              lifetimeEarned={wallet?.lifetimeEarned || 0}
+              multiplier={wallet?.tierMultiplier}
+              showLabel={false}
+              showMultiplier={false}
+              href="/loyalty"
+            />
+          </div>
+        )}
 
         {/* Navigation Items */}
         <ul className="space-y-1.5">

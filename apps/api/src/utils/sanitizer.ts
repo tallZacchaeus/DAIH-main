@@ -105,6 +105,20 @@ export function sanitizeMessage(input?: string | null): string {
     "Please verify database server status",
   );
 
+  // 6. Upstash / Redis / Cloud provider quota & error cleanup
+  sanitized = sanitized.replace(
+    /ERR max requests limit exceeded.*?See https?:\/\/[^\s]+ for details/gi,
+    "Service temporarily unavailable",
+  );
+  sanitized = sanitized.replace(
+    /ERR max requests limit exceeded[^\n\r]*/gi,
+    "Service temporarily unavailable",
+  );
+  sanitized = sanitized.replace(
+    /https?:\/\/(?:www\.)?upstash\.com[^\s"']*/gi,
+    "[URL_REDACTED]",
+  );
+
   return sanitized;
 }
 

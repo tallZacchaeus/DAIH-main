@@ -7,7 +7,11 @@ import React, {
   useState,
   useCallback,
 } from "react";
-import { UserProfile, LoginApiResponse } from "@daih/types";
+import {
+  UserProfile,
+  LoginApiResponse,
+  GoogleAuthResponseDTO,
+} from "@daih/types";
 import { api, DaihApiClient } from "./client";
 
 interface AuthContextType {
@@ -21,6 +25,11 @@ interface AuthContextType {
     portal?: "customer" | "admin" | string;
     audience?: "CUSTOMER" | "ADMIN" | string;
   }) => Promise<LoginApiResponse>;
+  loginWithGoogle: (
+    idToken: string,
+    referralCode?: string,
+    portal?: "customer" | "admin" | string,
+  ) => Promise<GoogleAuthResponseDTO>;
   setSession: (token: string, user: UserProfile) => void;
   register: (payload: {
     email: string;
@@ -245,6 +254,32 @@ export function AuthProvider({
     }
   };
 
+  const loginWithGoogle = async (
+    idToken: string,
+    referralCode?: string,
+    portal?: "customer" | "admin" | string,
+  ): Promise<GoogleAuthResponseDTO> => {
+    setIsLoading(true);
+    try {
+      const res = await apiClient.auth.loginWithGoogle(
+        idToken,
+        referralCode,
+        portal,
+      );
+      const jwt = (res as any).accessToken || (res as any).token || null;
+      if (res.user) {
+        updateUserState(res.user as UserProfile);
+      }
+      if (jwt) {
+        setAccessToken(jwt);
+        apiClient.setAccessToken(jwt);
+      }
+      return res;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const register = async (payload: {
     email: string;
     password: string;
@@ -283,6 +318,7 @@ export function AuthProvider({
         isLoading,
         isAuthenticated: !!user,
         login,
+        loginWithGoogle,
         setSession,
         register,
         logout,

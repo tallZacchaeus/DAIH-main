@@ -11,8 +11,66 @@ export interface UserSummaryDTO {
   clientId: string;
   role: UserRole;
   isVerified: boolean;
+  onboardingCompleted?: boolean;
   createdAt: Date;
   referralCode?: string | null;
+  hasPassword?: boolean;
+  hasReferrer?: boolean;
+  acquisitionSource?: string | null;
+  googleId?: string | null;
+  hasGoogleLinked?: boolean;
+  needsConsent?: boolean;
+  mfaEnabled?: boolean;
+  mfaMethod?: "EMAIL_OTP" | "TOTP" | null;
+}
+
+export interface GoogleAuthServiceDTO {
+  idToken: string;
+  referralCode?: string;
+  portal?: string;
+}
+
+export interface GoogleAuthServiceResult {
+  accessToken: string;
+  rawRefreshToken: string;
+  user: UserSummaryDTO;
+  isNewUser: boolean;
+  needsOnboarding: boolean;
+  needsConsent?: boolean;
+}
+
+export interface GoogleOAuthInitResult {
+  url: string;
+  stateCookie: {
+    name: string;
+    value: string;
+    maxAge: number;
+  };
+}
+
+export interface GoogleOAuthCallbackDTO {
+  code: string;
+  state: string;
+  stateCookie?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  deviceFingerprint?: string;
+}
+
+export interface GoogleOAuthCallbackResult {
+  accessToken?: string;
+  rawRefreshToken?: string;
+  user: UserSummaryDTO;
+  isNewUser: boolean;
+  needsConsent: boolean;
+  needsMfa?: boolean;
+  mfaToken?: string;
+  destination: string;
+}
+
+export interface OnboardingAttributionDTO {
+  source?: string;
+  referralCode?: string;
 }
 
 export interface RegisterDTO {

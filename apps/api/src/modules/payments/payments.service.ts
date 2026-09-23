@@ -17,6 +17,7 @@ import {
   ACTIVE_BOOKING_STATES,
 } from "../booking/booking.state-machine.js";
 import { discountService } from "../discounts/discount.service.js";
+import { loyaltyService } from "../loyalty/loyalty.service.js";
 import {
   BookingState,
   PaymentStatus,
@@ -526,6 +527,9 @@ export class PaymentsService {
                 transaction.id,
               );
 
+              // Confirm PD Coin redemption if applicable
+              await loyaltyService.confirmBookingRedemption(tx, booking.id);
+
               // Cancel delayed hold expiry job
               await cancelHoldExpiryJob(booking.id);
             } else {
@@ -552,6 +556,9 @@ export class PaymentsService {
                 },
               },
             });
+
+            // Award PD Coin loyalty reward & active referral bonus
+            await loyaltyService.awardPaymentReward(tx, transaction.id);
 
             // Outbox events
             await outboxService.recordEvent(

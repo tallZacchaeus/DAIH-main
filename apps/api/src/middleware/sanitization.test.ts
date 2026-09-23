@@ -68,4 +68,46 @@ describe("Sanitization & Validation Middleware Suite", () => {
       expect(jsonBody.code).toBe("VALIDATION_ERROR");
     });
   });
+
+  describe("Infrastructure & Upstash Redis Error Masking", () => {
+    it("should scrub Upstash Redis quota limit errors in sanitizeMessage", async () => {
+      const { sanitizeMessage } = await import("../utils/sanitizer.js");
+      const upstashError =
+        "ERR max requests limit exceeded. Limit: 500000, Usage: 500000. See https://upstash.com/docs/redis/troubleshooting/max_requests_limit for details";
+      const cleaned = sanitizeMessage(upstashError);
+      expect(cleaned).not.toContain("500000");
+      expect(cleaned).not.toContain("upstash.com");
+      expect(cleaned).toBe("Service temporarily unavailable");
+    });
+
+    it("should return generic friendly message on 500 in errorHandler", async () => {
+      const { errorHandler } = await import("./error-handler.middleware.js");
+      const error: any = new Error(
+        "ERR max requests limit exceeded. Limit: 500000, Usage: 500000. See https://upstash.com/docs/redis/troubleshooting/max_requests_limit for details",
+      );
+
+      let statusValue = 0;
+      let jsonBody: any = null;
+      const res = {
+        status: (code: number) => {
+          statusValue = code;
+          return {
+            json: (data: any) => {
+              jsonBody = data;
+            },
+          };
+        },
+      } as unknown as Response;
+
+      errorHandler(error, {} as Request, res, (() => {}) as any);
+
+      expect(statusValue).toBe(500);
+      expect(jsonBody.code).toBe("INTERNAL_SERVER_ERROR");
+      expect(jsonBody.message).toBe(
+        "Service temporarily unavailable. Please try again shortly.",
+      );
+      expect(jsonBody.message).not.toContain("upstash");
+      expect(jsonBody.message).not.toContain("500000");
+    });
+  });
 });

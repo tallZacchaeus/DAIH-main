@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { api } from "@daih/api-client";
 import { FacilityResource } from "@daih/types";
+import { VerifiedReviewsSection } from "../components/home/VerifiedReviewsSection";
 
 export default function HomePage() {
   const [resources, setResources] = useState<FacilityResource[]>([]);
@@ -544,6 +545,9 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Verified Member Reviews Section */}
+      <VerifiedReviewsSection />
 
       {/* Location Section */}
       <section id="section-location">

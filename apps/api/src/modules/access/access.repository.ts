@@ -1,6 +1,25 @@
 import { prisma } from "../../db/client.js";
 import { BookingState } from "@daih/types";
 
+const bookingAccessInclude = {
+  resource: {
+    include: {
+      schedules: true,
+      pricing: {
+        where: { isActive: true },
+      },
+    },
+  },
+  user: true,
+  transactions: {
+    orderBy: { createdAt: "desc" as const },
+    take: 1,
+  },
+  visitSessions: {
+    orderBy: { checkInTime: "desc" as const },
+  },
+};
+
 export class AccessRepository {
   /**
    * Find booking by QR token
@@ -8,13 +27,7 @@ export class AccessRepository {
   async findBookingByToken(qrToken: string) {
     return prisma.booking.findFirst({
       where: { qrToken },
-      include: {
-        resource: true,
-        user: true,
-        visitSessions: {
-          orderBy: { checkInTime: "desc" },
-        },
-      },
+      include: bookingAccessInclude,
     });
   }
 
@@ -26,13 +39,7 @@ export class AccessRepository {
       where: {
         OR: [{ id: idOrReference }, { reference: idOrReference }],
       },
-      include: {
-        resource: true,
-        user: true,
-        visitSessions: {
-          orderBy: { checkInTime: "desc" },
-        },
-      },
+      include: bookingAccessInclude,
     });
   }
 
@@ -55,13 +62,7 @@ export class AccessRepository {
           { user: { phoneNumber: { contains: clean, mode: "insensitive" } } },
         ],
       },
-      include: {
-        resource: true,
-        user: true,
-        visitSessions: {
-          orderBy: { checkInTime: "desc" },
-        },
-      },
+      include: bookingAccessInclude,
       orderBy: { startTime: "desc" },
       take: limit,
     });
@@ -127,10 +128,7 @@ export class AccessRepository {
         state: BookingState.CHECKED_IN,
         ...(isFirstCheckIn ? { checkedInAt: new Date() } : {}),
       },
-      include: {
-        resource: true,
-        user: true,
-      },
+      include: bookingAccessInclude,
     });
   }
 
@@ -144,10 +142,7 @@ export class AccessRepository {
         state: BookingState.CHECKED_OUT,
         checkedOutAt: new Date(),
       },
-      include: {
-        resource: true,
-        user: true,
-      },
+      include: bookingAccessInclude,
     });
   }
 

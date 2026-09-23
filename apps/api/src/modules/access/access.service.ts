@@ -65,6 +65,159 @@ export class AccessService {
   }
 
   /**
+   * Determine today's scheduled check-in slot window for a booking.
+   * For single-day bookings, this matches startTime and endTime directly.
+   * For multi-day bookings:
+   *  - Daily start time corresponds to the booking's scheduled daily start hour/minute (e.g. 08:00).
+   *  - Daily end time corresponds to the booking's scheduled daily end hour/minute (e.g. 19:00).
+   *  - If resource has active schedules for this day-of-week, opening/closing hours are also respected.
+   */
+  public resolveDailySlotWindow(
+    booking: any,
+    now: Date = new Date(),
+  ): {
+    slotStart: Date;
+    slotEnd: Date;
+    isClosedToday: boolean;
+    closedReason?: string;
+  } {
+    const bookingStart =
+      booking.startTime instanceof Date
+        ? booking.startTime
+        : new Date(booking.startTime);
+    const bookingEnd =
+      booking.endTime instanceof Date
+        ? booking.endTime
+        : new Date(booking.endTime);
+
+    const isSingleContinuousSession =
+      bookingEnd.getTime() - bookingStart.getTime() <= 24 * 60 * 60 * 1000;
+
+    let slotStart = new Date(now);
+    let slotEnd = new Date(now);
+
+    if (isSingleContinuousSession) {
+      // Single continuous session (hourly or single-day/overnight): exact booking start and end
+      slotStart.setTime(bookingStart.getTime());
+      slotEnd.setTime(bookingEnd.getTime());
+    } else {
+      // Multi-day booking / subscription
+      const hasExplicitDailyHours =
+        bookingEnd.getHours() !== bookingStart.getHours() ||
+        bookingEnd.getMinutes() !== bookingStart.getMinutes();
+
+      if (hasExplicitDailyHours) {
+        if (bookingEnd.getHours() > bookingStart.getHours()) {
+          // Daytime slot (e.g. 08:00 to 19:00)
+          slotStart.setHours(
+            bookingStart.getHours(),
+            bookingStart.getMinutes(),
+            bookingStart.getSeconds(),
+            0,
+          );
+          slotEnd.setHours(
+            bookingEnd.getHours(),
+            bookingEnd.getMinutes(),
+            bookingEnd.getSeconds(),
+            0,
+          );
+
+          if (
+            now.toDateString() === bookingStart.toDateString() &&
+            bookingStart > slotStart
+          ) {
+            slotStart.setTime(bookingStart.getTime());
+          }
+          if (
+            now.toDateString() === bookingEnd.toDateString() &&
+            bookingEnd < slotEnd
+          ) {
+            slotEnd.setTime(bookingEnd.getTime());
+          }
+        } else {
+          // Overnight multi-day slot (e.g. 20:00 to 06:00 next day)
+          slotStart.setHours(
+            bookingStart.getHours(),
+            bookingStart.getMinutes(),
+            bookingStart.getSeconds(),
+            0,
+          );
+          slotEnd = new Date(now);
+          slotEnd.setDate(slotEnd.getDate() + 1);
+          slotEnd.setHours(
+            bookingEnd.getHours(),
+            bookingEnd.getMinutes(),
+            bookingEnd.getSeconds(),
+            0,
+          );
+        }
+      } else {
+        // Multi-day pass without specific daily hour limits: active for full operating day
+        slotStart.setHours(0, 0, 0, 0);
+        slotEnd.setHours(23, 59, 59, 999);
+
+        if (
+          now.toDateString() === bookingStart.toDateString() &&
+          bookingStart > slotStart
+        ) {
+          slotStart.setTime(bookingStart.getTime());
+        }
+        if (
+          now.toDateString() === bookingEnd.toDateString() &&
+          bookingEnd < slotEnd
+        ) {
+          slotEnd.setTime(bookingEnd.getTime());
+        }
+      }
+    }
+
+    // Apply Resource Operating Schedules if defined
+    const schedules = booking.resource?.schedules || [];
+    const todaySchedule = schedules.find(
+      (s: any) => s.dayOfWeek === now.getDay(),
+    );
+
+    if (todaySchedule) {
+      if (todaySchedule.isClosed) {
+        return {
+          slotStart,
+          slotEnd,
+          isClosedToday: true,
+          closedReason:
+            "Workspace is closed on this day of the week according to operating schedule.",
+        };
+      }
+
+      if (!todaySchedule.is24Hours) {
+        if (todaySchedule.openTime) {
+          const [openH, openM] = todaySchedule.openTime.split(":").map(Number);
+          const facilityOpen = new Date(now);
+          facilityOpen.setHours(openH, openM || 0, 0, 0);
+          if (facilityOpen > slotStart) {
+            slotStart.setTime(facilityOpen.getTime());
+          }
+        }
+        if (todaySchedule.closeTime) {
+          const [closeH, closeM] = todaySchedule.closeTime
+            .split(":")
+            .map(Number);
+          const facilityClose = new Date(now);
+          facilityClose.setHours(closeH, closeM || 0, 0, 0);
+          if (facilityClose < slotEnd) {
+            slotEnd.setTime(facilityClose.getTime());
+          }
+        }
+      }
+    }
+
+    return {
+      slotStart,
+      slotEnd,
+      isClosedToday: false,
+    };
+  }
+
+  /**
    * Format booking into standard AccessPassDetails
    */
   private formatPassDetails(
@@ -125,6 +278,63 @@ export class AccessService {
         BookingState.REFUNDED,
       ].includes(booking.state as BookingState);
 
+    const slot = this.resolveDailySlotWindow(booking, now);
+    const isSlotConcludedToday = now >= slot.slotEnd;
+
+    const formattedOpen = slot.slotStart.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const formattedClose = slot.slotEnd.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const dailySlotHours = `${formattedOpen} – ${formattedClose}`;
+
+    // Multi-day metrics
+    const durationMs = bookingEnd.getTime() - bookingStart.getTime();
+    const isMultiDay = durationMs > 24 * 3600 * 1000;
+    const totalDays = isMultiDay
+      ? Math.ceil(durationMs / (24 * 3600 * 1000))
+      : 1;
+
+    let currentDayNumber = 1;
+    if (isMultiDay) {
+      const elapsedMs = now.getTime() - bookingStart.getTime();
+      const elapsedDays = Math.floor(elapsedMs / (24 * 3600 * 1000)) + 1;
+      currentDayNumber = Math.max(1, Math.min(totalDays, elapsedDays));
+    }
+
+    // Plan name
+    let planName: string | undefined = undefined;
+    if (booking.resource?.pricing && booking.resource.pricing.length > 0) {
+      planName = booking.resource.pricing[0].planName;
+    }
+
+    // Visit session history
+    const visitSessionsHistory = (booking.visitSessions || [])
+      .slice(0, 10)
+      .map((vs: any) => {
+        const inTime =
+          vs.checkInTime instanceof Date
+            ? vs.checkInTime
+            : new Date(vs.checkInTime);
+        const outTime = vs.checkOutTime
+          ? vs.checkOutTime instanceof Date
+            ? vs.checkOutTime
+            : new Date(vs.checkOutTime)
+          : null;
+        const durationMin = outTime
+          ? Math.round((outTime.getTime() - inTime.getTime()) / (60 * 1000))
+          : undefined;
+        return {
+          id: vs.id,
+          checkInTime: inTime.toISOString(),
+          checkOutTime: outTime ? outTime.toISOString() : null,
+          durationMinutes: durationMin,
+        };
+      });
+
     let wifiStatus: WifiAccessStatus = "LOCKED_NO_PASS";
     let wifiCredentials: WifiCredentialDTO | null = null;
 
@@ -132,8 +342,14 @@ export class AccessService {
       wifiStatus = "EXPIRED";
       wifiCredentials = null;
     } else if (isConfirmedOrActive && checkedInToday) {
-      wifiStatus = "ACTIVE";
-      wifiCredentials = this.generateWifiCredentials(booking, now);
+      // If checked out and today's slot ended, Wi-Fi locks until tomorrow's check-in
+      if (booking.state === BookingState.CHECKED_OUT && isSlotConcludedToday) {
+        wifiStatus = "LOCKED_PENDING_DAILY_CHECKIN";
+        wifiCredentials = null;
+      } else {
+        wifiStatus = "ACTIVE";
+        wifiCredentials = this.generateWifiCredentials(booking, now);
+      }
     } else if (isConfirmedOrActive && !checkedInToday) {
       wifiStatus = "LOCKED_PENDING_DAILY_CHECKIN";
       wifiCredentials = null;
@@ -145,11 +361,13 @@ export class AccessService {
       resourceId: booking.resourceId,
       resourceName: booking.resource?.name || "Workspace Resource",
       category: booking.resource?.category,
+      resourceLocation: booking.resource?.location,
+      resourceCapacity: booking.resource?.capacity,
       userId: booking.userId,
       clientId: booking.user?.clientId,
       customerName,
-      customerEmail: booking.user?.email,
-      customerPhone: booking.user?.phoneNumber || undefined,
+      customerEmail: undefined,
+      customerPhone: undefined,
       startTime: bookingStart.toISOString(),
       endTime: bookingEnd.toISOString(),
       state: booking.state as BookingState,
@@ -195,6 +413,15 @@ export class AccessService {
       visitCount: booking.visitSessions?.length || (activeVisitSession ? 1 : 0),
       wifiStatus,
       wifiCredentials,
+      dailySlotHours,
+      dailySlotStart: slot.slotStart.toISOString(),
+      dailySlotEnd: slot.slotEnd.toISOString(),
+      isSlotConcludedToday,
+      isMultiDay,
+      totalDays,
+      currentDayNumber,
+      planName,
+      visitSessionsHistory,
     };
   }
 
@@ -376,6 +603,9 @@ export class AccessService {
         rejectionDetails: {
           scheduledStartTime: startTime.toISOString(),
           scheduledEndTime: endTime.toISOString(),
+          isDailySlotRejection: false,
+          policyNotice:
+            "This reservation has reached its final expiration date. Member must book a new reservation for workspace access.",
         },
         booking: passDetails,
         canCheckIn: false,
@@ -396,6 +626,84 @@ export class AccessService {
     const isCheckedOut =
       booking.state === BookingState.CHECKED_OUT ||
       (booking.state === BookingState.CHECKED_IN && !isCheckedInToday);
+
+    // If attempting to check in (not currently on-site), enforce today's scheduled daily slot window
+    if (!isCurrentlyCheckedIn) {
+      const slot = this.resolveDailySlotWindow(booking, now);
+
+      if (slot.isClosedToday) {
+        return {
+          valid: false,
+          rejectionReason: AccessRejectionReason.FORBIDDEN,
+          rejectionTitle: "Facility Closed Today",
+          rejectionMessage:
+            slot.closedReason ||
+            "The workspace is closed on this day according to operating schedule.",
+          booking: passDetails,
+          canCheckIn: false,
+          canCheckOut: false,
+        };
+      }
+
+      if (now < slot.slotStart) {
+        const formattedOpen = slot.slotStart.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const formattedClose = slot.slotEnd.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        return {
+          valid: false,
+          rejectionReason: AccessRejectionReason.TOO_EARLY,
+          rejectionTitle: "Daily Check-In Not Yet Open",
+          rejectionMessage: `Check-in for today's session opens at ${formattedOpen}. Early check-in is strictly blocked.`,
+          rejectionDetails: {
+            scheduledStartTime: slot.slotStart.toISOString(),
+            scheduledEndTime: slot.slotEnd.toISOString(),
+            isDailySlotRejection: true,
+            dailySlotWindow: `${formattedOpen} – ${formattedClose}`,
+            policyNotice:
+              "DAIH Policy: Check-in initiates authorized internet credentials and workspace duration. Access is permitted strictly during scheduled reservation hours.",
+          },
+          booking: passDetails,
+          canCheckIn: false,
+          canCheckOut: false,
+        };
+      }
+
+      if (now >= slot.slotEnd) {
+        const formattedClose = slot.slotEnd.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const formattedOpen = slot.slotStart.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const tomorrowOpen = new Date(slot.slotStart);
+        tomorrowOpen.setDate(tomorrowOpen.getDate() + 1);
+
+        return {
+          valid: false,
+          rejectionReason: AccessRejectionReason.EXPIRED,
+          rejectionTitle: "Daily Slot Concluded",
+          rejectionMessage: `Today's scheduled session concluded at ${formattedClose}. Check-in is closed for the day.`,
+          rejectionDetails: {
+            scheduledStartTime: slot.slotStart.toISOString(),
+            scheduledEndTime: slot.slotEnd.toISOString(),
+            isDailySlotRejection: true,
+            dailySlotWindow: `${formattedOpen} – ${formattedClose}`,
+            nextAvailableCheckIn: tomorrowOpen.toISOString(),
+            policyNotice: `The member's booking remains active until ${endTime.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}. Workspace access reopens tomorrow at ${formattedOpen}.`,
+          },
+          booking: passDetails,
+          canCheckIn: false,
+          canCheckOut: false,
+        };
+      }
+    }
 
     return {
       valid: true,
@@ -443,6 +751,44 @@ export class AccessService {
     if (now >= end) {
       const err: any = new Error(
         `Cannot check in: scheduled booking window has ended (${end.toISOString()})`,
+      );
+      err.statusCode = 400;
+      err.code = "EXPIRED";
+      throw err;
+    }
+
+    // Enforce daily slot window (multi-day passes and scheduled daily slots)
+    const slot = this.resolveDailySlotWindow(booking, now);
+
+    if (slot.isClosedToday) {
+      const err: any = new Error(
+        slot.closedReason || "Cannot check in: workspace is closed today",
+      );
+      err.statusCode = 400;
+      err.code = "FACILITY_CLOSED";
+      throw err;
+    }
+
+    if (now < slot.slotStart) {
+      const formattedOpen = slot.slotStart.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const err: any = new Error(
+        `Cannot check in: today's scheduled session opens at ${formattedOpen}`,
+      );
+      err.statusCode = 400;
+      err.code = "TOO_EARLY";
+      throw err;
+    }
+
+    if (now >= slot.slotEnd) {
+      const formattedClose = slot.slotEnd.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const err: any = new Error(
+        `Cannot check in: today's scheduled session concluded at ${formattedClose}`,
       );
       err.statusCode = 400;
       err.code = "EXPIRED";

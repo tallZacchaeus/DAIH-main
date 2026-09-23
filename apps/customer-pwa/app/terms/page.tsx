@@ -106,6 +106,12 @@ export default function CustomerTermsPage() {
                 >
                   Privacy Policy & NDPR
                 </Link>
+                <Link
+                  href="/security"
+                  className="font-medium text-[#23055c] hover:underline"
+                >
+                  Security
+                </Link>
               </div>
             </div>
           </article>

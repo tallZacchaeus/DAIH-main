@@ -6,6 +6,7 @@ import { useAuth, api } from "@daih/api-client";
 import { Button, Input, useToast } from "@daih/ui";
 import { resolveAvatarUrl } from "../../../lib/image-utils";
 import { AvatarCropperModal } from "../../../components/dashboard";
+import { MemberTierBadge } from "../../../components/loyalty/MemberTierBadge";
 import {
   User,
   Shield,
@@ -78,6 +79,33 @@ export default function CustomerSettingsPage() {
 
   // Remove Avatar Confirmation State
   const [showDeleteAvatarModal, setShowDeleteAvatarModal] = useState(false);
+
+  // Loyalty Wallet & Tier State
+  const [wallet, setWallet] = useState<{
+    tier?: string;
+    tierMultiplier?: number;
+    lifetimeEarned?: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    let isMounted = true;
+    api.loyalty
+      .getMyWallet(false)
+      .then((w) => {
+        if (isMounted) {
+          setWallet({
+            tier: w.tier,
+            tierMultiplier: w.tierMultiplier,
+            lifetimeEarned: w.lifetimeEarned,
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
 
   // Sync state when user profile loads
   useEffect(() => {
@@ -359,40 +387,51 @@ export default function CustomerSettingsPage() {
   };
 
   return (
-    <div className="space-y-8 max-w-4xl mx-auto pb-12 w-full">
-      {/* Top Header: Account Settings label (Far Left) & Member ID Badge (Far Right) */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 sm:p-2 rounded-xl bg-purple-50 text-[#23055c] border border-purple-100 shrink-0">
-            <User className="w-4 h-4 sm:w-5 sm:h-5 text-[#23055c]" />
-          </div>
-          <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+    <div className="space-y-8 w-full pb-12">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#EBE7F5] pb-6">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#181c20] tracking-tight">
             Account Settings
           </h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Manage your personal profile details, profile picture, credentials,
+            and preferences.
+          </p>
         </div>
 
-        {/* Member ID Badge */}
-        {user?.clientId && (
-          <button
-            onClick={copyClientId}
-            title="Click to copy Member ID"
-            className="flex items-center gap-2 px-3.5 py-2 bg-white rounded-xl border border-[#EBE7F5] shadow-xs hover:border-[#23055c] transition-colors cursor-pointer shrink-0"
-          >
-            <div className="text-left">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                Member ID
-              </span>
-              <span className="font-mono text-xs font-bold text-[#23055c]">
-                {user.clientId}
-              </span>
-            </div>
-            {copiedClientId ? (
-              <Check className="w-4 h-4 text-emerald-600" />
-            ) : (
-              <Copy className="w-4 h-4 text-slate-400" />
-            )}
-          </button>
-        )}
+        {/* Member Badges (Tier & Client ID) */}
+        <div className="flex flex-wrap items-center gap-3 shrink-0 self-start sm:self-auto">
+          <MemberTierBadge
+            variant="badge"
+            tier={wallet?.tier}
+            lifetimeEarned={wallet?.lifetimeEarned || 0}
+            multiplier={wallet?.tierMultiplier}
+            href="/loyalty"
+          />
+
+          {user?.clientId && (
+            <button
+              onClick={copyClientId}
+              title="Click to copy Member ID"
+              className="flex items-center gap-2 px-3.5 py-2 bg-white rounded-xl border border-[#EBE7F5] shadow-xs hover:border-[#23055c] transition-colors cursor-pointer"
+            >
+              <div className="text-left">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Member ID
+                </span>
+                <span className="font-mono text-xs font-bold text-[#23055c]">
+                  {user.clientId}
+                </span>
+              </div>
+              {copiedClientId ? (
+                <Check className="w-4 h-4 text-emerald-600" />
+              ) : (
+                <Copy className="w-4 h-4 text-slate-400" />
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Full-Width Profile Picture Card */}

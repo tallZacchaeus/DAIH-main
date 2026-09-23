@@ -19,6 +19,7 @@ import {
   EyeOff,
   Users,
 } from "lucide-react";
+import { GoogleAuthButton } from "./GoogleAuthButton";
 
 interface RegisterFormProps {
   onSuccess: (email: string) => void;
@@ -50,10 +51,14 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
     const refParam =
       searchParams.get("ref") || searchParams.get("referralCode");
     if (refParam) {
+      const cleanRef = refParam.trim().toUpperCase();
       setFormData((prev) => ({
         ...prev,
-        referralCode: refParam.trim().toUpperCase(),
+        referralCode: cleanRef,
       }));
+      try {
+        localStorage.setItem("daih_referral_code", cleanRef);
+      } catch {}
     }
   }, [searchParams]);
 
@@ -239,6 +244,18 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
         </div>
       )}
 
+      {/* Google Sign-Up Option */}
+      <div className="space-y-4">
+        <GoogleAuthButton text="signup_with" disabled={isLoading} />
+
+        <div className="relative flex items-center justify-center my-2">
+          <div className="border-t border-slate-200 w-full" />
+          <span className="bg-white px-3 text-xs uppercase tracking-wider text-slate-400 font-semibold absolute">
+            Or continue with email
+          </span>
+        </div>
+      </div>
+
       {/* Form with noValidate to disable browser default popups in favor of rich alerts */}
       <form noValidate onSubmit={handleRegister} className="space-y-4">
         {/* First Name & Last Name */}
@@ -258,6 +275,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
                 id="firstName"
                 name="firstName"
                 type="text"
+                autoComplete="given-name"
                 placeholder="John"
                 value={formData.firstName}
                 onChange={handleChange}
@@ -282,6 +300,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
                 id="lastName"
                 name="lastName"
                 type="text"
+                autoComplete="family-name"
                 placeholder="Doe"
                 value={formData.lastName}
                 onChange={handleChange}
@@ -308,6 +327,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
               id="phone"
               name="phone"
               type="tel"
+              autoComplete="tel"
               placeholder="+234 800 000 0000"
               value={formData.phone}
               onChange={handleChange}
@@ -333,6 +353,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
               id="email"
               name="email"
               type="email"
+              autoComplete="email"
               placeholder="john.doe@company.com"
               value={formData.email}
               onChange={handleChange}
@@ -385,6 +406,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
                 id="password"
                 name="password"
                 type={showPassword ? "text" : "password"}
+                autoComplete="new-password"
                 placeholder="••••••••"
                 value={formData.password}
                 onChange={handleChange}
@@ -421,6 +443,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess }) => {
                 id="confirmPassword"
                 name="confirmPassword"
                 type={showConfirmPassword ? "text" : "password"}
+                autoComplete="new-password"
                 placeholder="••••••••"
                 value={formData.confirmPassword}
                 onChange={handleChange}

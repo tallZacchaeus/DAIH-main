@@ -11,6 +11,7 @@ import {
   ResourceBlackout,
   CalendarAvailabilityResultDTO,
   DiscountPreviewResponseDTO,
+  decodeHtmlEntities,
 } from "@daih/types";
 import {
   MapPin,
@@ -32,9 +33,11 @@ import {
   Timer,
   Tag,
   X,
+  Coins,
 } from "lucide-react";
 
 import { getWorkspaceImage } from "../../../../lib/image-utils";
+import { PdCoinRedemptionCard } from "../../../../components/book";
 
 // ---- duration helpers ----
 function getPlanDurationType(
@@ -606,6 +609,10 @@ export default function PlanSelectionAndCheckoutPage() {
   const [isValidatingPromo, setIsValidatingPromo] = useState(false);
   const [promoError, setPromoError] = useState<string | null>(null);
 
+  // PD Coin Loyalty Discount State
+  const [loyaltyDiscountNgn, setLoyaltyDiscountNgn] = useState<number>(0);
+  const [redeemedCoinsCount, setRedeemedCoinsCount] = useState<number>(0);
+
   useEffect(() => {
     if (!resource) return;
     const targetMonth = startDate.slice(0, 7);
@@ -1047,14 +1054,15 @@ export default function PlanSelectionAndCheckoutPage() {
   }
 
   if (confirmed) {
+    const finalAmountDue = Math.max(0, totalAmount - loyaltyDiscountNgn);
     return (
       <div className="py-24 flex items-center justify-center">
-        <div className="max-w-md w-full bg-white rounded-2xl p-10 border border-[#EBE7F5] shadow-sm text-center space-y-6">
-          <div className="w-16 h-16 rounded-full bg-[#23055c]/10 flex items-center justify-center mx-auto">
-            <Check className="h-8 w-8 text-[#23055c]" />
+        <div className="max-w-md w-full bg-white rounded-2xl p-6 sm:p-10 border border-[#EBE7F5] shadow-sm text-center space-y-5">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-[#23055c]/10 flex items-center justify-center mx-auto">
+            <Check className="h-7 w-7 sm:h-8 sm:w-8 text-[#23055c]" />
           </div>
           <div className="space-y-1">
-            <h2 className="text-2xl font-extrabold text-slate-900">
+            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900">
               Booking Reserved!
             </h2>
             <p className="text-xs text-slate-500">
@@ -1095,14 +1103,41 @@ export default function PlanSelectionAndCheckoutPage() {
                 </span>
               </div>
             )}
+            {loyaltyDiscountNgn > 0 && (
+              <div className="flex justify-between items-center text-amber-700 text-xs font-semibold">
+                <span className="flex items-center gap-1.5">
+                  <Coins className="h-3.5 w-3.5 text-amber-500" />
+                  PD Coin Discount ({redeemedCoinsCount.toLocaleString()} PDC)
+                </span>
+                <span>
+                  -{"\u20A6"}
+                  {loyaltyDiscountNgn.toLocaleString()}.00
+                </span>
+              </div>
+            )}
             <div className="flex justify-between pt-2 border-t border-[#EBE7F5]">
               <span className="text-slate-500">Amount Due</span>
               <span className="font-extrabold text-[#23055c]">
                 {"\u20A6"}
-                {totalAmount.toLocaleString()}.00
+                {finalAmountDue.toLocaleString()}.00
               </span>
             </div>
           </div>
+
+          {/* PD Coin Loyalty Redemption Component */}
+          {activeHoldId && (
+            <PdCoinRedemptionCard
+              bookingId={activeHoldId}
+              bookingTotalAmount={totalAmount}
+              appliedCoins={redeemedCoinsCount}
+              appliedDiscountNgn={loyaltyDiscountNgn}
+              onRedemptionChange={(discountNgn, coins) => {
+                setLoyaltyDiscountNgn(discountNgn);
+                setRedeemedCoinsCount(coins);
+              }}
+            />
+          )}
+
           <div className="flex flex-col gap-3">
             <button
               onClick={handleProceedToPayment}
@@ -1287,7 +1322,9 @@ export default function PlanSelectionAndCheckoutPage() {
                           .map((amenity, idx) => (
                             <li key={idx} className="flex items-center gap-2">
                               <CheckCircle2 className="h-3.5 w-3.5 text-[#23055c] shrink-0" />
-                              <span className="line-clamp-1">{amenity}</span>
+                              <span className="line-clamp-1">
+                                {decodeHtmlEntities(amenity)}
+                              </span>
                             </li>
                           ))}
                         <li className="flex items-center gap-2">

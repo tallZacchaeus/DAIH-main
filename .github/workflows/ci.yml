@@ -67,8 +67,8 @@ jobs:
       - name: Generate Prisma Client
         run: pnpm --filter @daih/api prisma:generate
 
-      - name: Push Database Schema
-        run: pnpm --filter @daih/api db:push
+      - name: Deploy Database Migrations
+        run: pnpm --filter @daih/api run prisma:migrate:deploy
 
       - name: Seed Email Templates
         run: pnpm --filter @daih/api run seed:templates

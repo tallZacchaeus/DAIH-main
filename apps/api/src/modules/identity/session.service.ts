@@ -345,12 +345,15 @@ export class SessionService {
       nextExpiresAt.getDate() + config.jwt.refreshExpiresInDays,
     );
 
-    // Revoke previous session
+    // Revoke previous session in DB
     await prisma.authSession.update({
       where: { id: session.id },
       data: { isRevoked: true },
     });
-    await this.markSessionRevokedInCache(session.id);
+    // Evict old session from active cache (grace window handles in-flight access tokens)
+    try {
+      await redis.del(`daih:session:active:${session.id}`);
+    } catch {}
 
     // Create next session in the same token family
     const newSession = await prisma.authSession.create({

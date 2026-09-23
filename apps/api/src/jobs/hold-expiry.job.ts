@@ -1,20 +1,23 @@
 import { Queue } from "bullmq";
 import { redis } from "../config/redis.js";
+import { config } from "../config/env.js";
 
 export const HOLD_EXPIRY_QUEUE_NAME = "booking-holds";
 
 export let holdExpiryQueue: Queue | null = null;
 
-try {
-  holdExpiryQueue = new Queue(HOLD_EXPIRY_QUEUE_NAME, {
-    connection: redis,
-    defaultJobOptions: {
-      removeOnComplete: true,
-      removeOnFail: false,
-    },
-  });
-} catch (err: any) {
-  console.warn("⚠️ Redis BullMQ queue initialization notice:", err?.message);
+if (config.env !== "test") {
+  try {
+    holdExpiryQueue = new Queue(HOLD_EXPIRY_QUEUE_NAME, {
+      connection: redis,
+      defaultJobOptions: {
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    });
+  } catch (err: any) {
+    console.warn("⚠️ Redis BullMQ queue initialization notice:", err?.message);
+  }
 }
 
 /**
@@ -26,7 +29,7 @@ export async function scheduleHoldExpiry(
   bookingId: string,
   delayMs: number = 10 * 60 * 1000,
 ): Promise<void> {
-  if (!holdExpiryQueue) return;
+  if (!holdExpiryQueue || config.env === "test") return;
   try {
     const jobId = `hold_expiry_${bookingId}`;
     await holdExpiryQueue.add(
@@ -52,7 +55,7 @@ export async function scheduleHoldExpiry(
  * Cancels or reschedules a hold expiry job.
  */
 export async function cancelHoldExpiryJob(bookingId: string): Promise<void> {
-  if (!holdExpiryQueue) return;
+  if (!holdExpiryQueue || config.env === "test") return;
   try {
     const jobId = `hold_expiry_${bookingId}`;
     const job = await holdExpiryQueue.getJob(jobId);

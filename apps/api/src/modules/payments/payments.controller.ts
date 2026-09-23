@@ -2,11 +2,13 @@ import { Request, Response, NextFunction } from "express";
 import { AuthRequest } from "../../middleware/auth.middleware.js";
 import { paymentsService, PaymentsService } from "./payments.service.js";
 import { invoiceService, InvoiceService } from "./invoice.service.js";
+import { refundService, RefundService } from "./refund.service.js";
 
 export class PaymentsController {
   constructor(
     private service: PaymentsService = paymentsService,
     private invoices: InvoiceService = invoiceService,
+    private refunds: RefundService = refundService,
   ) {}
 
   /**
@@ -237,6 +239,159 @@ export class PaymentsController {
     try {
       const { date } = req.query as { date?: string };
       const result = await this.service.getDailySummary(date);
+      res.status(200).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * POST /api/v1/payments/admin/refunds
+   * Operations Admin raises a dual-authorization refund request
+   */
+  raiseRefund = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          code: "UNAUTHORIZED",
+          message: "User not authenticated",
+        });
+      }
+      const result = await this.refunds.raiseRefundRequest(userId, req.body);
+      res.status(201).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * GET /api/v1/payments/admin/refunds
+   * Staff lists all refund requests with status filter & pagination
+   */
+  listRefunds = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const filters = req.query as any;
+      const result = await this.refunds.listRefundRequests(filters);
+      res.status(200).json({ success: true, ...result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * GET /api/v1/payments/admin/refunds/:id
+   * Staff retrieves single refund request details
+   */
+  getRefund = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params.id as string;
+      const result = await this.refunds.getRefundRequest(id);
+      res.status(200).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * POST /api/v1/payments/admin/refunds/:id/request-info
+   * Finance Officer requests clarification from Operations Admin
+   */
+  requestRefundInfo = async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          code: "UNAUTHORIZED",
+          message: "User not authenticated",
+        });
+      }
+      const id = req.params.id as string;
+      const result = await this.refunds.requestMoreInfo(userId, id, req.body);
+      res.status(200).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * POST /api/v1/payments/admin/refunds/:id/provide-info
+   * Operations Admin responds to Finance Officer's inquiry
+   */
+  provideRefundInfo = async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          code: "UNAUTHORIZED",
+          message: "User not authenticated",
+        });
+      }
+      const id = req.params.id as string;
+      const result = await this.refunds.provideMoreInfo(userId, id, req.body);
+      res.status(200).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * POST /api/v1/payments/admin/refunds/:id/approve
+   * Finance Officer or Super Admin approves refund (triggers Paystack + coin clawbacks)
+   */
+  approveRefund = async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          code: "UNAUTHORIZED",
+          message: "User not authenticated",
+        });
+      }
+      const id = req.params.id as string;
+      const result = await this.refunds.approveRefund(userId, id);
+      res.status(200).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * POST /api/v1/payments/admin/refunds/:id/reject
+   * Finance Officer or Super Admin rejects refund request with reason
+   */
+  rejectRefund = async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          code: "UNAUTHORIZED",
+          message: "User not authenticated",
+        });
+      }
+      const id = req.params.id as string;
+      const result = await this.refunds.rejectRefund(userId, id, req.body);
       res.status(200).json({ success: true, data: result });
     } catch (err) {
       next(err);

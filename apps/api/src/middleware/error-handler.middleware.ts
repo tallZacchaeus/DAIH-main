@@ -40,10 +40,10 @@ export const errorHandler = (
   const code = sanitizeMessage(rawCode);
   const rawMessage = err.message || "An unexpected error occurred";
 
-  // Identify database / connection / infrastructure failure signatures for 500s
+  // Identify database / connection / infrastructure / redis / upstash failure signatures for 500s
   const isDbOrInternalError =
     statusCode >= 500 &&
-    /prisma|database|connection|econnrefused|etimedout|pooler|neon|postgres|pg_/i.test(
+    /prisma|database|connection|econnrefused|econnreset|etimedout|pooler|neon|postgres|pg_|redis|upstash|ioredis|max requests|limit exceeded|quota|socket/i.test(
       `${err.name || ""} ${rawMessage} ${err.stack || ""}`,
     );
 
@@ -70,7 +70,8 @@ export const errorHandler = (
 
   res.status(statusCode).json({
     success: false,
-    code,
+    code:
+      isDbOrInternalError || statusCode >= 500 ? "INTERNAL_SERVER_ERROR" : code,
     message: clientMessage,
     ...(clientDetails ? { details: clientDetails } : {}),
   });

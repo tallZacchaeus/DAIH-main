@@ -141,21 +141,74 @@ export class CatalogueRepository {
       const bookingIds = bookings.map((b) => b.id);
 
       if (bookingIds.length > 0) {
-        // Cascade delete visit sessions linked to these bookings
+        // 1. Find all transactions linked to these bookings
+        const transactions = await tx.transaction.findMany({
+          where: { bookingId: { in: bookingIds } },
+          select: { id: true },
+        });
+        const transactionIds = transactions.map((t) => t.id);
+
+        // 2. Cascade delete invoices linked to these transactions or bookings
+        if (transactionIds.length > 0) {
+          await tx.invoice.deleteMany({
+            where: {
+              OR: [
+                { transactionId: { in: transactionIds } },
+                { bookingId: { in: bookingIds } },
+              ],
+            },
+          });
+        } else {
+          await tx.invoice.deleteMany({
+            where: { bookingId: { in: bookingIds } },
+          });
+        }
+
+        // 3. Cascade delete refund requests linked to these bookings
+        await tx.refundRequest.deleteMany({
+          where: { bookingId: { in: bookingIds } },
+        });
+
+        // 4. Cascade delete coin holds linked to these bookings
+        await tx.coinHold.deleteMany({
+          where: { bookingId: { in: bookingIds } },
+        });
+
+        // 5. Cascade delete discount redemptions linked to these bookings
+        await tx.discountRedemption.deleteMany({
+          where: { bookingId: { in: bookingIds } },
+        });
+
+        // 6. Cascade delete visit sessions linked to these bookings
         await tx.visitSession.deleteMany({
           where: { bookingId: { in: bookingIds } },
         });
 
-        // Cascade delete transactions linked to these bookings
+        // 7. Cascade delete transactions linked to these bookings
         await tx.transaction.deleteMany({
           where: { bookingId: { in: bookingIds } },
         });
 
-        // Delete the bookings
+        // 8. Cascade delete reviews linked to these bookings or resource
+        await tx.review.deleteMany({
+          where: {
+            OR: [{ bookingId: { in: bookingIds } }, { resourceId: id }],
+          },
+        });
+
+        // 9. Delete the bookings
         await tx.booking.deleteMany({
           where: { id: { in: bookingIds } },
         });
+      } else {
+        // Delete reviews linked directly to the resource
+        await tx.review.deleteMany({
+          where: { resourceId: id },
+        });
       }
+
+      // Delete targeted discounts
+      await tx.discountTargetResource.deleteMany({ where: { resourceId: id } });
 
       // Delete pricing tiers, schedules, and blackouts
       await tx.resourcePricing.deleteMany({ where: { resourceId: id } });

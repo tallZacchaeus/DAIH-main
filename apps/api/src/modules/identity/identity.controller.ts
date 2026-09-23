@@ -129,6 +129,197 @@ export class IdentityController {
     }
   };
 
+  googleAuth = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const portalHeader = (req.headers["x-portal"] ||
+        req.headers["x-client-portal"]) as string | undefined;
+
+      const result = await identityService.authenticateGoogle(
+        {
+          idToken: req.body.idToken,
+          referralCode: req.body.referralCode,
+          portal: req.body.portal || portalHeader,
+        },
+        {
+          ipAddress: req.ip,
+          userAgent: req.headers["user-agent"],
+          deviceFingerprint: computeFingerprint(req),
+          portal: req.body.portal || portalHeader,
+        },
+      );
+
+      // Store refresh token strictly in httpOnly cookie
+      this.setRefreshCookie(res, result.rawRefreshToken, req);
+
+      // Return public DTO - strictly NO rawRefreshToken in response body
+      res.json({
+        success: true,
+        data: {
+          token: result.accessToken,
+          accessToken: result.accessToken,
+          user: result.user,
+          isNewUser: result.isNewUser,
+          needsOnboarding: result.needsOnboarding,
+          needsConsent: result.needsConsent,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  initiateGoogleOAuth = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const portal = (req.query.portal ||
+        req.headers["x-portal"] ||
+        "customer") as string;
+      const ref = (req.query.ref || req.query.referralCode) as
+        string | undefined;
+      const destination = req.query.destination as string | undefined;
+
+      const result = identityService.generateGoogleOAuthUrl({
+        referralCode: ref,
+        destination,
+        portal,
+      });
+
+      const isSecure = Boolean(
+        req.secure ||
+        req.headers["x-forwarded-proto"] === "https" ||
+        config.cookies.secure,
+      );
+
+      res.cookie(result.stateCookie.name, result.stateCookie.value, {
+        httpOnly: true,
+        secure: isSecure,
+        sameSite: "lax",
+        maxAge: result.stateCookie.maxAge,
+        path: "/",
+      });
+
+      if (
+        req.headers.accept?.includes("application/json") ||
+        req.query.json === "true"
+      ) {
+        res.json({
+          success: true,
+          data: {
+            url: result.url,
+          },
+        });
+        return;
+      }
+
+      res.redirect(result.url);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  handleGoogleOAuthCallback = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    const portal = (req.query.portal as string) || "customer";
+    const baseRedirectUrl =
+      portal === "admin"
+        ? config.frontendUrls.admin
+        : config.frontendUrls.customer;
+
+    try {
+      if (req.query.error) {
+        const errorDesc = (req.query.error_description ||
+          req.query.error) as string;
+        res.redirect(
+          `${baseRedirectUrl}/login?error=${encodeURIComponent(errorDesc)}`,
+        );
+        return;
+      }
+
+      const code = req.query.code as string;
+      const state = req.query.state as string;
+      const stateCookie = req.cookies?.daih_oauth_state;
+
+      const result = await identityService.handleGoogleOAuthCallback(
+        {
+          code,
+          state,
+          stateCookie,
+          ipAddress: req.ip,
+          userAgent: req.headers["user-agent"],
+          deviceFingerprint: computeFingerprint(req),
+        },
+        {
+          ipAddress: req.ip,
+          userAgent: req.headers["user-agent"],
+          deviceFingerprint: computeFingerprint(req),
+          portal,
+        },
+      );
+
+      res.clearCookie("daih_oauth_state", { path: "/" });
+
+      if (result.rawRefreshToken) {
+        this.setRefreshCookie(res, result.rawRefreshToken, req);
+      }
+
+      const redirectPath = result.needsConsent ? "/consent" : "/auth/callback";
+
+      const targetUrl = new URL(redirectPath, baseRedirectUrl);
+      if (result.accessToken) {
+        targetUrl.searchParams.set("token", result.accessToken);
+      }
+      if (result.destination) {
+        targetUrl.searchParams.set("destination", result.destination);
+      }
+
+      res.redirect(targetUrl.toString());
+    } catch (error: any) {
+      const errorMsg = error.message || "Google authentication failed";
+      res.redirect(
+        `${baseRedirectUrl}/login?error=${encodeURIComponent(errorMsg)}`,
+      );
+    }
+  };
+
+  capturePolicyConsent = async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      if (!req.user) {
+        res
+          .status(401)
+          .json({ code: "UNAUTHORIZED", message: "Authentication required" });
+        return;
+      }
+
+      const user = await identityService.capturePolicyConsent(
+        req.user.id,
+        req.body,
+      );
+
+      res.json({
+        success: true,
+        data: {
+          user,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   refresh = async (
     req: Request,
     res: Response,
@@ -403,6 +594,33 @@ export class IdentityController {
       res.json({
         success: true,
         data: user,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  submitOnboardingAttribution = async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      if (!req.user) {
+        res
+          .status(401)
+          .json({ code: "UNAUTHORIZED", message: "Authentication required" });
+        return;
+      }
+
+      const updated = await identityService.submitOnboardingAttribution(
+        req.user.id,
+        req.body,
+      );
+
+      res.json({
+        success: true,
+        data: updated,
       });
     } catch (error) {
       next(error);
@@ -706,6 +924,63 @@ export class IdentityController {
       res.json({
         success: true,
         message: "A new verification code has been sent to your email",
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  initiateProfileMfa = async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      if (!req.user) {
+        res
+          .status(401)
+          .json({ code: "UNAUTHORIZED", message: "Authentication required" });
+        return;
+      }
+
+      const result = await identityService.initiateProfileMfa(
+        req.user.id,
+        req.body.method,
+      );
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  confirmProfileMfa = async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      if (!req.user) {
+        res
+          .status(401)
+          .json({ code: "UNAUTHORIZED", message: "Authentication required" });
+        return;
+      }
+
+      const result = await identityService.confirmProfileMfa(
+        req.user.id,
+        req.body.method,
+        req.body.code,
+        req.body.ephemeralSecret,
+      );
+
+      res.json({
+        success: true,
+        message: `MFA method successfully updated to ${req.body.method === "TOTP" ? "Authenticator App" : "Email OTP"}.`,
+        data: result,
       });
     } catch (error) {
       next(error);

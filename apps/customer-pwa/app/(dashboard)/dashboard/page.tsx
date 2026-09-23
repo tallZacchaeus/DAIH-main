@@ -12,12 +12,22 @@ import {
 import {
   ActiveSubscriptionCard,
   UpcomingBookingCard,
-  FinancialOverviewCard,
   WifiAccessCard,
   RecentActivityCard,
 } from "../../../components/dashboard";
 import { ActivityItem } from "../../../components/dashboard/RecentActivityCard";
-import { ArrowRight, RefreshCw, Calendar, PlusCircle } from "lucide-react";
+import { ReviewModal } from "../../../components/reviews/ReviewModal";
+import { MemberTierBadge } from "../../../components/loyalty/MemberTierBadge";
+import {
+  ArrowRight,
+  RefreshCw,
+  Calendar,
+  PlusCircle,
+  Star,
+  Loader2,
+  X,
+} from "lucide-react";
+import { ReviewDTO } from "@daih/types";
 
 function formatDate(isoStr?: string) {
   if (!isoStr) return "";
@@ -61,8 +71,80 @@ export default function MemberDashboardPage() {
   const { user } = useAuth();
   const [bookings, setBookings] = useState<BookingSummary[]>([]);
   const [transactions, setTransactions] = useState<PaymentTransaction[]>([]);
+  const [wallet, setWallet] = useState<{
+    tier?: string;
+    tierMultiplier?: number;
+    lifetimeEarned?: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Review Modal State for Completed/Ended Stay Prompt
+  const [reviewBooking, setReviewBooking] = useState<BookingSummary | null>(
+    null,
+  );
+  const [existingReview, setExistingReview] = useState<ReviewDTO | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [checkingReviewId, setCheckingReviewId] = useState<string | null>(null);
+  const [dismissedReviewIds, setDismissedReviewIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [isDismissedLoaded, setIsDismissedLoaded] = useState(false);
+
+  // Load dismissed review IDs from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("daih_dismissed_reviews");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setDismissedReviewIds(new Set(parsed));
+        }
+      }
+    } catch {
+      // Ignore localStorage read errors
+    } finally {
+      setIsDismissedLoaded(true);
+    }
+  }, []);
+
+  const handleDismissReview = useCallback((bookingId: string) => {
+    setDismissedReviewIds((prev) => {
+      const updated = new Set([...prev, bookingId]);
+      try {
+        localStorage.setItem(
+          "daih_dismissed_reviews",
+          JSON.stringify([...updated]),
+        );
+      } catch {
+        // Ignore localStorage write errors
+      }
+      return updated;
+    });
+  }, []);
+
+  const handleOpenReview = async (b: BookingSummary) => {
+    try {
+      setCheckingReviewId(b.id);
+      const res = await api.reviews.checkEligibility(b.id);
+      if (res.eligible) {
+        setReviewBooking(b);
+        setExistingReview(null);
+        setShowReviewModal(true);
+      } else if (res.hasReviewed && res.existingReview) {
+        setReviewBooking(b);
+        setExistingReview(res.existingReview);
+        setShowReviewModal(true);
+      } else {
+        alert(res.reason || "This booking is not eligible for review.");
+        handleDismissReview(b.id);
+      }
+    } catch (err: any) {
+      alert(err?.message || "Could not check review eligibility.");
+    } finally {
+      setCheckingReviewId(null);
+    }
+  };
 
   const fetchDashboardData = useCallback(async (forceRefresh = false) => {
     try {
@@ -72,10 +154,13 @@ export default function MemberDashboardPage() {
         setLoading(true);
       }
 
-      const [bookingsData, paymentsData] = await Promise.allSettled([
-        api.bookings.getMyBookings({ forceRefresh }),
-        api.payments.getHistory({ forceRefresh }),
-      ]);
+      const [bookingsData, paymentsData, walletData] = await Promise.allSettled(
+        [
+          api.bookings.getMyBookings({ forceRefresh }),
+          api.payments.getHistory({ forceRefresh }),
+          api.loyalty.getMyWallet(forceRefresh),
+        ],
+      );
 
       if (
         bookingsData.status === "fulfilled" &&
@@ -89,6 +174,14 @@ export default function MemberDashboardPage() {
         Array.isArray(paymentsData.value)
       ) {
         setTransactions(paymentsData.value);
+      }
+
+      if (walletData.status === "fulfilled" && walletData.value) {
+        setWallet({
+          tier: walletData.value.tier,
+          tierMultiplier: walletData.value.tierMultiplier,
+          lifetimeEarned: walletData.value.lifetimeEarned,
+        });
       }
     } catch (err) {
       console.warn("Failed to load dashboard live data:", err);
@@ -111,7 +204,7 @@ export default function MemberDashboardPage() {
 
   const firstName = user?.firstName || (user as any)?.name || "Member";
 
-  // Derive Active Pass / Booking (confirmed/active and not expired)
+  // Derive Active Pass / Booking (confirmed/active/checked-in and not expired)
   const now = new Date();
   const confirmedStates = [
     BookingState.CONFIRMED,
@@ -120,26 +213,69 @@ export default function MemberDashboardPage() {
     BookingState.CHECKED_OUT,
   ];
 
+  // An active pass must be within its booked window
   const activeBooking = bookings.find((b) => {
     const isConfirmed = confirmedStates.includes(b.state as BookingState);
     const end = new Date(b.endTime);
     return isConfirmed && end >= now;
   });
 
-  // Check if member has checked in TODAY for their active pass
-  const isCheckedInToday = Boolean(
-    activeBooking?.checkedInToday ||
-    activeBooking?.wifiCredentials != null ||
-    (activeBooking?.state === BookingState.CHECKED_IN &&
-      activeBooking.checkedInAt &&
-      new Date(activeBooking.checkedInAt).toDateString() ===
-        now.toDateString()),
+  // Resolve today's scheduled slot end time for active booking
+  const todaySlotEnd = (() => {
+    if (!activeBooking) return null;
+    const bStart = new Date(activeBooking.startTime);
+    const bEnd = new Date(activeBooking.endTime);
+    if (bEnd.toDateString() === now.toDateString()) {
+      return bEnd;
+    }
+    if (
+      bEnd.getHours() !== bStart.getHours() ||
+      bEnd.getMinutes() !== bStart.getMinutes()
+    ) {
+      const slot = new Date(now);
+      slot.setHours(bEnd.getHours(), bEnd.getMinutes(), bEnd.getSeconds(), 0);
+      return slot;
+    }
+    return bEnd;
+  })();
+
+  const isSlotConcludedToday = Boolean(todaySlotEnd && now >= todaySlotEnd);
+
+  // Mid-day Break: Member is currently in CHECKED_OUT state while today's scheduled slot is still in progress!
+  const isOnBreak = Boolean(
+    activeBooking &&
+    activeBooking.state === BookingState.CHECKED_OUT &&
+    !isSlotConcludedToday &&
+    new Date(activeBooking.endTime) >= now,
   );
 
+  // Checked in and currently on-site:
+  const isCheckedInToday = Boolean(
+    activeBooking && activeBooking.state === BookingState.CHECKED_IN,
+  );
+
+  // Identify most recent ended/completed booking for review prompt and clean expired status
+  const mostRecentEndedBooking = bookings.find((b) => {
+    const end = new Date(b.endTime);
+    const isPastState = [
+      BookingState.COMPLETED,
+      BookingState.CHECKED_OUT,
+      BookingState.CONFIRMED,
+      BookingState.CHECKED_IN,
+    ].includes(b.state as BookingState);
+    return isPastState && (end < now || b.state === BookingState.COMPLETED);
+  });
+
+  // Resolve Wi-Fi status cleanly:
+  // 1. If currently on-site or on mid-day break -> "ACTIVE" (credentials stay active until endTime)
+  // 2. If pass active but daily check-in needed -> "LOCKED_PENDING_DAILY_CHECKIN"
+  // 3. If session has ended / expired -> "EXPIRED" (cleanly removes Active Today badge)
+  // 4. Otherwise -> "LOCKED_NO_PASS"
   const wifiStatus = activeBooking
-    ? activeBooking.wifiStatus ||
-      (isCheckedInToday ? "ACTIVE" : "LOCKED_PENDING_DAILY_CHECKIN")
-    : bookings.length > 0 && bookings.every((b) => new Date(b.endTime) < now)
+    ? isCheckedInToday || isOnBreak
+      ? "ACTIVE"
+      : "LOCKED_PENDING_DAILY_CHECKIN"
+    : mostRecentEndedBooking
       ? "EXPIRED"
       : "LOCKED_NO_PASS";
 
@@ -153,7 +289,8 @@ export default function MemberDashboardPage() {
   const wifiPassword =
     activeBooking?.wifiCredentials?.pin ||
     (activeBooking ? activeBooking.reference.slice(-6).toUpperCase() : "N/A");
-  const wifiValidUntil = activeBooking?.wifiCredentials?.validUntil;
+  const wifiValidUntil =
+    activeBooking?.wifiCredentials?.validUntil || activeBooking?.endTime;
 
   const upcomingBookings = bookings
     .filter((b) => {
@@ -170,33 +307,6 @@ export default function MemberDashboardPage() {
       (a, b) =>
         new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
     );
-
-  // Financial calculations from live transactions or confirmed bookings
-  const successfulPayments = transactions.filter(
-    (t) =>
-      t.status === PaymentStatus.SUCCESSFUL ||
-      (t.status as any) === "SUCCESS" ||
-      (t.status as any) === "SUCCESSFUL",
-  );
-
-  const totalPaidAmount =
-    successfulPayments.length > 0
-      ? successfulPayments.reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
-      : bookings
-          .filter((b) => confirmedStates.includes(b.state as BookingState))
-          .reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
-
-  const formattedTotalPaid = `₦${totalPaidAmount.toLocaleString("en-NG", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-
-  const paymentCount =
-    successfulPayments.length > 0
-      ? successfulPayments.length
-      : bookings.filter((b) =>
-          confirmedStates.includes(b.state as BookingState),
-        ).length;
 
   // Build unified live activities timeline
   const liveActivities: ActivityItem[] = [
@@ -234,10 +344,17 @@ export default function MemberDashboardPage() {
       {/* Welcome & Quick Action Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-purple-50 via-white to-slate-50 p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <h2 className="text-2xl sm:text-3xl font-extrabold text-[#181c20] tracking-tight">
               {getGreeting()}, {firstName}
             </h2>
+            <MemberTierBadge
+              variant="pill"
+              tier={wallet?.tier}
+              lifetimeEarned={wallet?.lifetimeEarned || 0}
+              multiplier={wallet?.tierMultiplier}
+              href="/loyalty"
+            />
             <button
               onClick={() => fetchDashboardData(true)}
               disabled={isRefreshing || loading}
@@ -263,6 +380,52 @@ export default function MemberDashboardPage() {
         </Link>
       </div>
 
+      {/* Review Prompt Banner for recently completed/ended stay */}
+      {isDismissedLoaded &&
+        mostRecentEndedBooking &&
+        (mostRecentEndedBooking.checkedInAt != null ||
+          mostRecentEndedBooking.state === BookingState.CHECKED_OUT ||
+          mostRecentEndedBooking.state === BookingState.COMPLETED) &&
+        !dismissedReviewIds.has(mostRecentEndedBooking.id) && (
+          <div className="bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-transparent p-4 sm:p-5 rounded-2xl border border-amber-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in duration-200">
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <Star className="w-5 h-5 fill-current" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">
+                  How was your stay at {mostRecentEndedBooking.resourceName}?
+                </h4>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Your session has ended. Share your verified feedback to help
+                  other members and rate the workspace.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+              <button
+                onClick={() => handleDismissReview(mostRecentEndedBooking.id)}
+                className="px-3 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-100/60 rounded-xl transition-colors cursor-pointer"
+              >
+                Dismiss
+              </button>
+              <button
+                onClick={() => handleOpenReview(mostRecentEndedBooking)}
+                disabled={checkingReviewId === mostRecentEndedBooking.id}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {checkingReviewId === mostRecentEndedBooking.id ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Star className="w-3.5 h-3.5 fill-current" />
+                )}
+                <span>Leave a Review</span>
+              </button>
+            </div>
+          </div>
+        )}
+
       {/* Main Grid: 8-Column Main Content & 4-Column Widgets */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
         {/* Left / Main Content Column */}
@@ -284,9 +447,13 @@ export default function MemberDashboardPage() {
                   : undefined
               }
               statusBadge={
-                activeBooking && new Date(activeBooking.startTime) <= now
-                  ? "Active"
-                  : "Confirmed"
+                isOnBreak
+                  ? "On Break"
+                  : activeBooking?.state === BookingState.CHECKED_IN
+                    ? "Checked In"
+                    : activeBooking && new Date(activeBooking.startTime) <= now
+                      ? "Active"
+                      : "Confirmed"
               }
               qrHref={
                 activeBooking ? `/qr?bookingId=${activeBooking.id}` : "/qr"
@@ -387,17 +554,11 @@ export default function MemberDashboardPage() {
 
         {/* Right / Sidebar Widgets Column */}
         <div className="col-span-1 md:col-span-4 space-y-6">
-          {/* Live Financial Overview */}
-          <FinancialOverviewCard
-            loading={loading}
-            totalPaid={formattedTotalPaid}
-            label={`${paymentCount} ${paymentCount === 1 ? "Invoice" : "Invoices"} Paid`}
-          />
-
-          {/* Member Wi-Fi Access Card (Locked daily until check-in or upon expiry) */}
+          {/* Wi-Fi Details Access Card (Locked daily until check-in or upon expiry) */}
           <WifiAccessCard
             loading={loading}
             isCheckedIn={isCheckedInToday}
+            isOnBreak={isOnBreak}
             status={wifiStatus}
             networkName={wifiNetworkName}
             username={wifiUsername}
@@ -409,6 +570,26 @@ export default function MemberDashboardPage() {
           <RecentActivityCard loading={loading} activities={liveActivities} />
         </div>
       </div>
+
+      {/* Review Modal Dialog for Prompt */}
+      {showReviewModal && reviewBooking && (
+        <ReviewModal
+          isOpen={showReviewModal}
+          booking={reviewBooking}
+          existingReview={existingReview}
+          onClose={() => {
+            setShowReviewModal(false);
+            setReviewBooking(null);
+          }}
+          onSuccess={() => {
+            setShowReviewModal(false);
+            if (reviewBooking) {
+              handleDismissReview(reviewBooking.id);
+            }
+            fetchDashboardData(true);
+          }}
+        />
+      )}
     </div>
   );
 }

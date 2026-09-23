@@ -87,6 +87,11 @@ export function hasRouteAccess(
     return true;
   }
 
+  // Profile page is accessible to all authenticated staff
+  if (pathname === "/profile" || pathname.startsWith("/profile")) {
+    return true;
+  }
+
   if (pathname.startsWith("/bookings")) {
     return hasPermission(role, [
       Permission.BOOKINGS_READ_ALL,

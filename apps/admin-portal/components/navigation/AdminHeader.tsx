@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -10,8 +10,11 @@ import {
   ExternalLink,
   PanelLeftClose,
   PanelLeftOpen,
+  LogOut,
+  Loader2,
 } from "lucide-react";
 import { useAuth } from "@daih/api-client";
+import { Modal } from "@daih/ui";
 
 export interface AdminHeaderProps {
   isMobileOpen: boolean;
@@ -27,7 +30,19 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
   onToggleCollapse,
 }) => {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      window.location.href = "/login";
+    } catch {
+      window.location.href = "/login";
+    }
+  };
 
   interface PageBreadcrumb {
     parent?: { title: string; href: string };
@@ -45,6 +60,15 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
       return {
         parent: { title: "Bookings", href: "/bookings" },
         current: "Booking Details",
+      };
+    }
+    if (
+      path === "/operations/campaigns" ||
+      path.startsWith("/operations/campaigns")
+    ) {
+      return {
+        parent: { title: "Operations", href: "/operations" },
+        current: "Campaigns & Growth AI",
       };
     }
     if (path === "/operations" || path === "/operations/resources") {
@@ -65,6 +89,12 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
         current: "Member Profile",
       };
     }
+    if (path === "/finance/refunds" || path.startsWith("/finance/refunds")) {
+      return {
+        parent: { title: "Finance", href: "/finance" },
+        current: "Refund Approvals",
+      };
+    }
     if (path === "/finance") {
       return { current: "Finance & Payments" };
     }
@@ -82,6 +112,12 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
     }
     if (path === "/staff" || path.startsWith("/users")) {
       return { current: "Staff Management" };
+    }
+    if (path === "/profile" || path.startsWith("/profile")) {
+      return {
+        parent: { title: "Dashboard", href: "/" },
+        current: "Admin Profile",
+      };
     }
     if (path === "/settings") {
       return { current: "Settings" };
@@ -204,12 +240,69 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
           <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
         </a>
 
-        {/* User Role Pill */}
-        <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-50 border border-purple-200 text-[#23055c] text-[11px] font-bold">
+        {/* User Role Pill & Profile Link */}
+        <Link
+          href="/profile"
+          className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 border border-purple-200 text-[#23055c] text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
+          title="View & Edit Admin Profile"
+        >
           <Shield className="w-3.5 h-3.5" />
           <span>{user?.role || "OPERATIONS_ADMIN"}</span>
-        </div>
+        </Link>
+
+        {/* Sign Out Button */}
+        <button
+          type="button"
+          onClick={() => setShowLogoutModal(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 text-slate-600 hover:text-rose-600 text-xs font-semibold transition-all cursor-pointer shadow-xs"
+          title="Sign Out of Admin Console"
+        >
+          <LogOut className="w-3.5 h-3.5 text-rose-500" />
+          <span className="hidden sm:inline">Sign Out</span>
+        </button>
       </div>
+
+      {/* Sign Out Confirmation Modal */}
+      <Modal
+        isOpen={showLogoutModal}
+        onClose={() => !isLoggingOut && setShowLogoutModal(false)}
+        title="Sign Out of Admin Console"
+      >
+        <div className="space-y-4">
+          <p className="text-xs sm:text-sm text-slate-600">
+            Are you sure you want to end your administrator session? You will
+            need your credentials to log back in.
+          </p>
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowLogoutModal(false)}
+              disabled={isLoggingOut}
+              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="px-4 py-2 rounded-xl bg-[#23055c] hover:bg-[#392271] text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+            >
+              {isLoggingOut ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Signing Out...</span>
+                </>
+              ) : (
+                <>
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Confirm Sign Out</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </header>
   );
 };

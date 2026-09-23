@@ -18,9 +18,15 @@ import {
   Shield,
   PanelLeftOpen,
   Tag,
+  Coins,
+  Star,
+  Sparkles,
+  RotateCcw,
+  User,
+  Loader2,
 } from "lucide-react";
 import { useAuth } from "@daih/api-client";
-import { cn } from "@daih/ui";
+import { cn, Modal } from "@daih/ui";
 import { resolveAvatarUrl } from "../../lib/image-utils";
 import { hasRouteAccess, NavSectionConfig } from "../../lib/rbac";
 
@@ -71,6 +77,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           description: "Desks, rooms, holds & capacity",
         },
         {
+          name: "Campaigns & AI",
+          href: "/operations/campaigns",
+          icon: Sparkles,
+          description: "6 guardrails, lift analytics & AI copy",
+          badge: "AI",
+        },
+        {
           name: "Customers",
           href: "/customers",
           icon: Users,
@@ -81,6 +94,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           href: "/visits",
           icon: UserCheck,
           description: "Facility access & live occupancy logs",
+        },
+        {
+          name: "Customer Reviews",
+          href: "/operations/reviews",
+          icon: Star,
+          description: "Verified testimonials & approvals",
         },
       ],
     },
@@ -94,10 +113,23 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           description: "Paystack ledger & settlements",
         },
         {
+          name: "Refund Approvals",
+          href: "/finance/refunds",
+          icon: RotateCcw,
+          description: "Dual-authorization & coin clawbacks",
+          badge: "Dual-Auth",
+        },
+        {
           name: "Discounts & Promos",
           href: "/finance/discounts",
           icon: Tag,
           description: "Customer coupons & space promotions",
+        },
+        {
+          name: "Loyalty & PD Coins",
+          href: "/finance/loyalty",
+          icon: Coins,
+          description: "Reward formulas & token ledger",
         },
       ],
     },
@@ -116,6 +148,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           icon: UserCheck,
           description: "Team directory & RBAC roles",
           badge: "RBAC",
+        },
+        {
+          name: "My Profile",
+          href: "/profile",
+          icon: User,
+          description: "Admin account & credentials",
         },
         {
           name: "Settings",
@@ -164,7 +202,11 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     [pathname, allNavHrefs],
   );
 
+  const [showLogoutModal, setShowLogoutModal] = React.useState(false);
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
+
   const handleLogout = async () => {
+    setIsLoggingOut(true);
     try {
       await logout();
       window.location.href = "/login";
@@ -334,45 +376,54 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             isCollapsed ? "lg:justify-center" : "",
           )}
         >
-          <div
-            className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#23055c] to-[#65519f] text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs cursor-pointer overflow-hidden"
-            title={
-              user
-                ? `${user.firstName} ${user.lastName} (${user.role})`
-                : "Staff Administrator"
-            }
+          <Link
+            href="/profile"
+            onClick={onMobileClose}
+            className="flex items-center gap-3 flex-1 min-w-0 group hover:opacity-90 transition-opacity"
+            title="View Admin Profile"
           >
-            {resolvedAvatar && !avatarError ? (
-              <img
-                src={resolvedAvatar}
-                alt={user ? `${user.firstName} ${user.lastName}` : "Admin"}
-                className="w-full h-full object-cover"
-                onError={() => setAvatarError(true)}
-              />
-            ) : (
-              getInitials(user ? `${user.firstName} ${user.lastName}` : "Admin")
-            )}
-          </div>
+            <div
+              className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#23055c] to-[#65519f] text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs cursor-pointer overflow-hidden group-hover:ring-2 group-hover:ring-purple-400 transition-all"
+              title={
+                user
+                  ? `${user.firstName} ${user.lastName} (${user.role})`
+                  : "Staff Administrator"
+              }
+            >
+              {resolvedAvatar && !avatarError ? (
+                <img
+                  src={resolvedAvatar}
+                  alt={user ? `${user.firstName} ${user.lastName}` : "Admin"}
+                  className="w-full h-full object-cover"
+                  onError={() => setAvatarError(true)}
+                />
+              ) : (
+                getInitials(
+                  user ? `${user.firstName} ${user.lastName}` : "Admin",
+                )
+              )}
+            </div>
 
-          <div
-            className={cn(
-              "min-w-0 flex-1",
-              isCollapsed ? "lg:hidden" : "block",
-            )}
-          >
-            <div className="font-bold text-xs text-slate-900 truncate">
-              {user
-                ? `${user.firstName} ${user.lastName}`
-                : "Staff Administrator"}
+            <div
+              className={cn(
+                "min-w-0 flex-1",
+                isCollapsed ? "lg:hidden" : "block",
+              )}
+            >
+              <div className="font-bold text-xs text-slate-900 truncate">
+                {user
+                  ? `${user.firstName} ${user.lastName}`
+                  : "Staff Administrator"}
+              </div>
+              <div className="text-[10px] text-slate-500 truncate flex items-center gap-1">
+                <Shield className="w-3 h-3 text-[#23055c]" />
+                <span>{user?.role || "OPERATIONS_ADMIN"}</span>
+              </div>
             </div>
-            <div className="text-[10px] text-slate-500 truncate flex items-center gap-1">
-              <Shield className="w-3 h-3 text-[#23055c]" />
-              <span>{user?.role || "OPERATIONS_ADMIN"}</span>
-            </div>
-          </div>
+          </Link>
 
           <button
-            onClick={handleLogout}
+            onClick={() => setShowLogoutModal(true)}
             className={cn(
               "p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer",
               isCollapsed ? "lg:hidden" : "block",
@@ -408,6 +459,48 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           </button>
         )}
       </div>
+
+      {/* Logout Confirmation Modal */}
+      <Modal
+        isOpen={showLogoutModal}
+        onClose={() => !isLoggingOut && setShowLogoutModal(false)}
+        title="Sign Out of Admin Console"
+      >
+        <div className="space-y-4">
+          <p className="text-xs sm:text-sm text-slate-600">
+            Are you sure you want to end your administrator session? You will
+            need your credentials to log back in.
+          </p>
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowLogoutModal(false)}
+              disabled={isLoggingOut}
+              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="px-4 py-2 rounded-xl bg-[#23055c] hover:bg-[#392271] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+            >
+              {isLoggingOut ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Signing Out...</span>
+                </>
+              ) : (
+                <>
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Confirm Sign Out</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </aside>
   );
 };

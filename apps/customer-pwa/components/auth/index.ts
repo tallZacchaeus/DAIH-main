@@ -9,3 +9,4 @@ export { VerifyEmailCard } from "./VerifyEmailCard";
 export { VerificationStatusCard } from "./VerificationStatusCard";
 export { ForgotPasswordCard } from "./ForgotPasswordCard";
 export { ResetPasswordCard } from "./ResetPasswordCard";
+export { GoogleAuthButton } from "./GoogleAuthButton";

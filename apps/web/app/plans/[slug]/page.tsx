@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { api } from "@daih/api-client";
-import { FacilityResource } from "@daih/types";
+import { FacilityResource, decodeHtmlEntities } from "@daih/types";
 import { Loader2 } from "lucide-react";
 import { resolveResourceImageUrl } from "../../../lib/image-utils";
 import { getPortalBookingUrl } from "../../../lib/config";
@@ -130,7 +130,7 @@ export default function DynamicWorkspacePage() {
               <h3>What is Included</h3>
               <ul className="ul-style-3 mb30">
                 {amenities.map((item: string, idx: number) => (
-                  <li key={idx}>{item}</li>
+                  <li key={idx}>{decodeHtmlEntities(item)}</li>
                 ))}
               </ul>
             </div>

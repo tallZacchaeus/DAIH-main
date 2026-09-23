@@ -57,6 +57,18 @@ export async function processNotificationJob(job: Job<NotificationJobData>) {
           payload.reference,
           payload.resourceName || "Workspace Resource",
           payload.departureTime,
+          payload.bookingId,
+        );
+        break;
+      }
+
+      case "booking.completed": {
+        await emailService.sendBookingCompletedReviewEmail(
+          recipientEmail,
+          recipientName,
+          payload.reference,
+          payload.resourceName || "Workspace Resource",
+          payload.bookingId,
         );
         break;
       }
@@ -92,6 +104,47 @@ export async function processNotificationJob(job: Job<NotificationJobData>) {
           payload.amount || 0,
           payload.currency || "NGN",
           payload.invoiceNumber,
+        );
+        break;
+      }
+
+      case "security.account_linked": {
+        await emailService.sendAccountLinkedEmail(
+          recipientEmail,
+          recipientName,
+          payload.provider || "Google",
+        );
+        break;
+      }
+
+      case "auth.mfa_otp": {
+        await emailService.sendMfaOtpEmail(
+          recipientEmail,
+          recipientName,
+          payload.rawCode,
+        );
+        break;
+      }
+
+      case "campaign.broadcast": {
+        await emailService.sendCampaignBroadcastEmail(
+          recipientEmail,
+          recipientName,
+          payload.subject || "DAIH Workspaces Notification",
+          payload.content || "",
+          payload.coinReward,
+          payload.discountPercentage,
+        );
+        break;
+      }
+
+      case "finance.refund_requested":
+      case "finance.refund_info_provided":
+      case "operations.refund_info_requested":
+      case "operations.refund_rejected":
+      case "customer.refund_processed": {
+        console.log(
+          `[NotificationWorker] Dispatching ${jobType} to ${recipientEmail}`,
         );
         break;
       }

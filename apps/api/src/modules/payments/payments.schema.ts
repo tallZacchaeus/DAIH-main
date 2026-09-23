@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { sanitizeString } from "../../middleware/validate.middleware.js";
-import { PaymentStatus, PaymentMethod } from "@daih/types";
+import {
+  PaymentStatus,
+  PaymentMethod,
+  RefundStatus,
+  RefundReasonCode,
+} from "@daih/types";
 
 export const InitializePaymentParamsSchema = z.object({
   bookingId: z
@@ -70,4 +75,56 @@ export const PaystackWebhookSchema = z.object({
     })
     .passthrough()
     .optional(),
+});
+
+// Dual-Authorization Refund Schemas
+export const RaiseRefundRequestSchema = z.object({
+  bookingId: z
+    .string()
+    .trim()
+    .min(1, "Booking ID is required")
+    .transform(sanitizeString),
+  reasonCode: z.nativeEnum(RefundReasonCode),
+  reason: z
+    .string()
+    .trim()
+    .min(
+      20,
+      "Refund request reason must be at least 20 characters describing the justification",
+    ),
+});
+
+export const RefundRequestIdParamsSchema = z.object({
+  id: z
+    .string()
+    .trim()
+    .min(1, "Refund request ID is required")
+    .transform(sanitizeString),
+});
+
+export const RequestInfoBodySchema = z.object({
+  question: z
+    .string()
+    .trim()
+    .min(5, "Clarification question must be at least 5 characters"),
+});
+
+export const ProvideInfoBodySchema = z.object({
+  response: z
+    .string()
+    .trim()
+    .min(5, "Response clarification must be at least 5 characters"),
+});
+
+export const RejectRefundBodySchema = z.object({
+  rejectionReason: z
+    .string()
+    .trim()
+    .min(5, "Rejection reason must be at least 5 characters"),
+});
+
+export const ListRefundsQuerySchema = z.object({
+  status: z.nativeEnum(RefundStatus).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
 });

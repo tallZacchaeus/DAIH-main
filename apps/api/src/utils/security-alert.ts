@@ -29,12 +29,17 @@ export async function recordTelemetry(
   metricName: string,
   tags: TelemetryTags,
 ): Promise<void> {
-  // 1. Structured log for Datadog / cloud log pipelines
-  safeLogger.info(`[TELEMETRY] ${metricName}`, {
-    metric: metricName,
-    ...tags,
-    timestamp: new Date().toISOString(),
-  });
+  // 1. Structured log for Datadog / cloud log pipelines (enabled in production or via ENABLE_TELEMETRY_LOGS)
+  if (
+    config.env === "production" ||
+    process.env.ENABLE_TELEMETRY_LOGS === "true"
+  ) {
+    safeLogger.info(`[TELEMETRY] ${metricName}`, {
+      metric: metricName,
+      ...tags,
+      timestamp: new Date().toISOString(),
+    });
+  }
 
   // 2. Increment live Redis metric counters if Redis is accessible
   try {

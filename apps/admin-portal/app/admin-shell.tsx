@@ -51,6 +51,10 @@ export function AdminShell({ children }: AdminShellProps) {
   }, []);
 
   const isLoginPage = pathname === "/login" || pathname.startsWith("/login");
+  const isForgotPasswordPage =
+    pathname === "/forgot-password" || pathname.startsWith("/forgot-password");
+  const isResetPasswordPage =
+    pathname === "/reset-password" || pathname.startsWith("/reset-password");
   const isSetupAccountPage =
     pathname === "/setup-account" || pathname.startsWith("/setup-account");
   const isSetupMfaPage =
@@ -58,7 +62,12 @@ export function AdminShell({ children }: AdminShellProps) {
   const isAccessDeniedPage =
     pathname === "/access-denied" || pathname.startsWith("/access-denied");
   const isPublicPage =
-    isLoginPage || isAccessDeniedPage || isSetupAccountPage || isSetupMfaPage;
+    isLoginPage ||
+    isForgotPasswordPage ||
+    isResetPasswordPage ||
+    isAccessDeniedPage ||
+    isSetupAccountPage ||
+    isSetupMfaPage;
 
   // Enforce authentication on all protected console routes
   useEffect(() => {
@@ -68,7 +77,13 @@ export function AdminShell({ children }: AdminShellProps) {
   }, [isLoading, isAuthenticated, isPublicPage, router]);
 
   // If on login, setup account, or setup MFA page, render children directly without navbar / sidebar
-  if (isLoginPage || isSetupAccountPage || isSetupMfaPage) {
+  if (
+    isLoginPage ||
+    isForgotPasswordPage ||
+    isResetPasswordPage ||
+    isSetupAccountPage ||
+    isSetupMfaPage
+  ) {
     return <div className="min-h-screen bg-[#ebeef3]">{children}</div>;
   }
 

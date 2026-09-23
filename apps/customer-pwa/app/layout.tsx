@@ -8,7 +8,8 @@ export const metadata: Metadata = {
     "Manage your workspace bookings, instant QR access pass, and invoices.",
   manifest: "/manifest.json",
   icons: {
-    icon: "/images/icon.png",
+    icon: "/icon.png",
+    apple: "/icon-192.png",
   },
 };
 
@@ -20,7 +21,8 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <link rel="icon" href="/images/icon.png" type="image/png" sizes="any" />
+        <link rel="icon" href="/icon.png" type="image/png" sizes="any" />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"

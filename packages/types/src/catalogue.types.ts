@@ -158,3 +158,23 @@ export interface UploadImageResponse {
   height?: number;
   resourceId?: string;
 }
+
+/**
+ * Decodes single- or double-escaped HTML entities (e.g., &amp;amp; -> &amp; -> &, &quot; -> ", &#x27; -> ')
+ * to guarantee that resource names, descriptions, and amenities always render cleanly as plain text.
+ */
+export function decodeHtmlEntities(str: string): string {
+  if (!str || typeof str !== "string") return str;
+  let current = str;
+  let prev = "";
+  while (current !== prev && /&(amp|lt|gt|quot|#x27|#39);/i.test(current)) {
+    prev = current;
+    current = current
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#x27;|&#39;/gi, "'");
+  }
+  return current;
+}

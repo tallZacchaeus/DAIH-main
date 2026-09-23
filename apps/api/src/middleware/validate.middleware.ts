@@ -68,9 +68,32 @@ export const validateParams = (schema: ZodSchema) => {
 };
 
 /**
- * Escapes HTML special characters in string inputs to prevent XSS injection.
+ * Iteratively unescapes any double- or single-encoded HTML entities
+ * (e.g. &amp;amp; -> &amp; -> &, &quot; -> ", &#x27; -> ')
+ */
+export const unescapeHtml = (str: string): string => {
+  if (!str || typeof str !== "string") return str;
+  let current = str;
+  let prev = "";
+  while (current !== prev && /&(amp|lt|gt|quot|#x27|#39);/i.test(current)) {
+    prev = current;
+    current = current
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#x27;|&#39;/gi, "'");
+  }
+  return current;
+};
+
+/**
+ * Sanitizes input string to prevent XSS injection while preserving natural text
+ * and legitimate characters like '&'. Unescapes any double-escaped entities
+ * and strips dangerous HTML / script tags.
  */
 export const sanitizeString = (str: string): string => {
+  if (!str || typeof str !== "string") return str;
   return str
     .trim()
     .replace(/&/g, "&amp;")

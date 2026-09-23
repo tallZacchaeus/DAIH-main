@@ -23,8 +23,10 @@ import {
   Eye,
   FileText,
   Tag,
+  RotateCcw,
 } from "lucide-react";
 import { ApplyCourtesyDiscountModal } from "../../components/finance/discounts/ApplyCourtesyDiscountModal";
+import { RaiseRefundModal } from "../../components/finance/refunds";
 
 function formatDate(isoStr: string) {
   if (!isoStr) return "—";
@@ -65,6 +67,11 @@ export default function AdminBookingsPage() {
 
   // Courtesy Discount Modal
   const [courtesyBooking, setCourtesyBooking] = useState<BookingSummary | null>(
+    null,
+  );
+
+  // Refund Modal
+  const [bookingToRefund, setBookingToRefund] = useState<BookingSummary | null>(
     null,
   );
 
@@ -519,9 +526,22 @@ export default function AdminBookingsPage() {
                                 reason: "",
                               });
                             }}
-                            className="px-2.5 py-1 text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                            className="px-2.5 py-1 text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg text-[11px] font-bold transition-colors cursor-pointer mr-1.5"
                           >
                             Reschedule
+                          </button>
+                        )}
+                        {(b.state === BookingState.CONFIRMED ||
+                          b.state === BookingState.CHECKED_IN ||
+                          b.state === BookingState.COMPLETED ||
+                          b.state === BookingState.CANCELLED) && (
+                          <button
+                            onClick={() => setBookingToRefund(b)}
+                            className="px-2.5 py-1 text-[#23055c] bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg text-[11px] font-bold transition-colors cursor-pointer inline-flex items-center gap-1"
+                            title="Raise refund request for dual-authorization review"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>Refund</span>
                           </button>
                         )}
                       </td>
@@ -1019,6 +1039,25 @@ export default function AdminBookingsPage() {
           onSuccess={() => {
             fetchBookings();
             setCourtesyBooking(null);
+          }}
+        />
+      )}
+
+      {/* Raise Refund Modal */}
+      {bookingToRefund && (
+        <RaiseRefundModal
+          isOpen={Boolean(bookingToRefund)}
+          onClose={() => setBookingToRefund(null)}
+          preselectedBooking={{
+            id: bookingToRefund.id,
+            reference: bookingToRefund.reference,
+            customerName: bookingToRefund.customerName,
+            customerEmail: bookingToRefund.customerEmail,
+            totalAmount: bookingToRefund.amount,
+          }}
+          onSuccess={() => {
+            fetchBookings();
+            setBookingToRefund(null);
           }}
         />
       )}

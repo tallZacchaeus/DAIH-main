@@ -129,6 +129,92 @@ export interface PaystackWebhookPayload {
   };
 }
 
+export enum RefundStatus {
+  PENDING = "PENDING",
+  INFO_REQUESTED = "INFO_REQUESTED",
+  APPROVED = "APPROVED",
+  REJECTED = "REJECTED",
+  PROCESSED = "PROCESSED",
+  FAILED = "FAILED",
+}
+
+export enum RefundReasonCode {
+  FACILITY_ISSUE = "FACILITY_ISSUE",
+  SERVICE_FAILURE = "SERVICE_FAILURE",
+  DUPLICATE_PAYMENT = "DUPLICATE_PAYMENT",
+  UNAVAILABLE_RESOURCE = "UNAVAILABLE_RESOURCE",
+  CUSTOMER_DISPUTE = "CUSTOMER_DISPUTE",
+  OTHER = "OTHER",
+}
+
+export interface RaiseRefundRequestDTO {
+  bookingId: string;
+  reasonCode: RefundReasonCode;
+  reason: string;
+}
+
+export interface RequestInfoDTO {
+  question: string;
+}
+
+export interface ProvideInfoDTO {
+  response: string;
+}
+
+export interface RejectRefundDTO {
+  rejectionReason: string;
+}
+
+export interface RefundRequestItemDTO {
+  id: string;
+  bookingId: string;
+  transactionId?: string | null;
+  amount: number;
+  coinsToReverse: number;
+  coinsToClawback: number;
+  referralCoinsToClawback: number;
+  referrerId?: string | null;
+  reasonCode: RefundReasonCode;
+  reason: string;
+  status: RefundStatus;
+  requestedByUserId: string;
+  reviewedByUserId?: string | null;
+  rejectionReason?: string | null;
+  infoRequested?: string | null;
+  infoProvided?: string | null;
+  paystackRefundId?: string | null;
+  gatewayReference?: string | null;
+  failureReason?: string | null;
+  requestedAt: string;
+  reviewedAt?: string | null;
+  booking?: {
+    id: string;
+    reference: string;
+    state: string;
+    totalAmount: number;
+    user?: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+    };
+  };
+  requestedBy?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: string;
+  };
+  reviewedBy?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: string;
+  };
+}
+
 export interface RefundRequestDTO {
   amount?: number;
   reason: string;

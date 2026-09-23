@@ -47,10 +47,12 @@ export interface AccessPassDetails {
   resourceId: string;
   resourceName: string;
   category?: string;
+  resourceLocation?: string;
+  resourceCapacity?: number;
   userId: string;
   clientId?: string;
   customerName: string;
-  customerEmail: string;
+  customerEmail?: string;
   customerPhone?: string;
   startTime: string;
   endTime: string;
@@ -62,6 +64,22 @@ export interface AccessPassDetails {
   visitCount?: number;
   wifiStatus: WifiAccessStatus;
   wifiCredentials: WifiCredentialDTO | null;
+
+  // Enriched booking metadata for reception clarity (financial details excluded)
+  dailySlotHours?: string;
+  dailySlotStart?: string;
+  dailySlotEnd?: string;
+  isSlotConcludedToday?: boolean;
+  isMultiDay?: boolean;
+  totalDays?: number;
+  currentDayNumber?: number;
+  planName?: string;
+  visitSessionsHistory?: Array<{
+    id: string;
+    checkInTime: string;
+    checkOutTime?: string | null;
+    durationMinutes?: number;
+  }>;
 }
 
 export interface VerifyAccessPassResponse {
@@ -80,6 +98,9 @@ export interface VerifyAccessPassResponse {
       receptionTerminal: string;
     };
     adminRescheduleAvailable?: boolean;
+    isDailySlotRejection?: boolean;
+    dailySlotWindow?: string;
+    nextAvailableCheckIn?: string;
   };
   booking?: AccessPassDetails;
   canCheckIn?: boolean;

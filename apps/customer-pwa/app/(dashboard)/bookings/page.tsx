@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, Suspense } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  Suspense,
+  useMemo,
+} from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, useAuth } from "@daih/api-client";
@@ -23,8 +29,19 @@ import {
   Download,
   X,
   Sparkles,
+  FileSpreadsheet,
+  FileText,
+  Star,
+  Coffee,
 } from "lucide-react";
+import { ReviewDTO } from "@daih/types";
+import { ReviewModal } from "../../../components/reviews/ReviewModal";
 import { downloadReceiptPdf } from "../../../lib/receiptPdf";
+import {
+  downloadBookingsCsv,
+  downloadBookingsPdf,
+  isStatementEligible,
+} from "../../../lib/statementExport";
 
 function formatDate(isoStr: string) {
   if (!isoStr) return "";
@@ -42,6 +59,16 @@ function formatTime(isoStr: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatMonthLabel(ym: string) {
+  if (ym === "ALL") return "All Time";
+  const [yearStr, monthStr] = ym.split("-");
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  if (isNaN(year) || isNaN(month)) return ym;
+  const d = new Date(year, month - 1, 1);
+  return d.toLocaleDateString("en-NG", { month: "long", year: "numeric" });
 }
 
 function BookingsContent() {
@@ -69,6 +96,181 @@ function BookingsContent() {
     string | null
   >(null);
   const verifiedRefTracker = React.useRef<string | null>(null);
+
+  // Statement & Financial Export state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<string>("ALL");
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Customer Review Modal state
+  const [reviewBooking, setReviewBooking] = useState<BookingSummary | null>(
+    null,
+  );
+  const [existingReview, setExistingReview] = useState<ReviewDTO | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [checkingReviewId, setCheckingReviewId] = useState<string | null>(null);
+
+  const handleOpenReview = async (b: BookingSummary) => {
+    try {
+      setCheckingReviewId(b.id);
+      const res = await api.reviews.checkEligibility(b.id);
+      if (res.eligible) {
+        setReviewBooking(b);
+        setExistingReview(null);
+        setShowReviewModal(true);
+      } else if (res.hasReviewed && res.existingReview) {
+        setReviewBooking(b);
+        setExistingReview(res.existingReview);
+        setShowReviewModal(true);
+      } else {
+        alert(res.reason || "This booking is not eligible for review.");
+      }
+    } catch (err: any) {
+      alert(err?.message || "Could not check review eligibility.");
+    } finally {
+      setCheckingReviewId(null);
+    }
+  };
+
+  // Handle direct review link from email (e.g. /bookings?reviewBookingId=...)
+  useEffect(() => {
+    if (typeof window !== "undefined" && bookings.length > 0) {
+      const params = new URLSearchParams(window.location.search);
+      const reviewBookingId = params.get("reviewBookingId");
+      if (reviewBookingId) {
+        const target = bookings.find((b) => b.id === reviewBookingId);
+        if (target) {
+          if (
+            new Date(target.endTime) < new Date() ||
+            target.state === BookingState.CHECKED_OUT ||
+            target.state === BookingState.COMPLETED
+          ) {
+            setActiveTab("history");
+          }
+          handleOpenReview(target);
+        }
+      }
+    }
+  }, [bookings]);
+
+  const customerInfo = useMemo(() => {
+    return {
+      name: user
+        ? `${user.firstName} ${user.lastName}`.trim()
+        : "Valued Member",
+      email: user?.email || undefined,
+      phone: user?.phoneNumber || undefined,
+      clientId: user?.clientId || undefined,
+    };
+  }, [user]);
+
+  // Filter bookings eligible for statements (excludes EXPIRED and draft/held slots)
+  const statementEligibleBookings = useMemo(() => {
+    return bookings.filter(isStatementEligible);
+  }, [bookings]);
+
+  const availableMonths = useMemo(() => {
+    const monthMap = new Map<string, number>();
+    statementEligibleBookings.forEach((b) => {
+      const dateStr = b.startTime || b.createdAt;
+      if (dateStr) {
+        const d = new Date(dateStr);
+        if (!isNaN(d.getTime())) {
+          const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+          monthMap.set(ym, (monthMap.get(ym) || 0) + 1);
+        }
+      }
+    });
+
+    return Array.from(monthMap.keys()).sort((a, b) => b.localeCompare(a));
+  }, [statementEligibleBookings]);
+
+  const getMonthCount = useCallback(
+    (ym: string) => {
+      if (ym === "ALL") return statementEligibleBookings.length;
+      return statementEligibleBookings.filter((b) => {
+        const dateStr = b.startTime || b.createdAt;
+        if (!dateStr) return false;
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return false;
+        const bookingYm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        return bookingYm === ym;
+      }).length;
+    },
+    [statementEligibleBookings],
+  );
+
+  const exportFilteredBookings = useMemo(() => {
+    if (selectedMonth === "ALL") return statementEligibleBookings;
+    return statementEligibleBookings.filter((b) => {
+      const dateStr = b.startTime || b.createdAt;
+      if (!dateStr) return false;
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return false;
+      const bookingYm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      return bookingYm === selectedMonth;
+    });
+  }, [statementEligibleBookings, selectedMonth]);
+
+  const exportStats = useMemo(() => {
+    const totalCount = exportFilteredBookings.length;
+    const totalSpend = exportFilteredBookings.reduce((sum, b) => {
+      const amt =
+        typeof b.amount === "number"
+          ? b.amount
+          : parseFloat(String(b.amount || 0));
+      return sum + (isNaN(amt) ? 0 : amt);
+    }, 0);
+    const totalDiscount = exportFilteredBookings.reduce((sum, b) => {
+      const amt =
+        typeof b.discountAmount === "number"
+          ? b.discountAmount
+          : parseFloat(String(b.discountAmount || 0));
+      return sum + (isNaN(amt) ? 0 : amt);
+    }, 0);
+
+    return {
+      totalCount,
+      totalSpend,
+      totalDiscount,
+    };
+  }, [exportFilteredBookings]);
+
+  const handleDownloadCsv = () => {
+    try {
+      setIsExporting(true);
+      downloadBookingsCsv({
+        bookings: exportFilteredBookings,
+        periodLabel:
+          selectedMonth === "ALL"
+            ? "All Time"
+            : formatMonthLabel(selectedMonth),
+        customer: customerInfo,
+      });
+    } catch (err) {
+      console.error("Failed to generate CSV statement:", err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleDownloadPdf = () => {
+    try {
+      setIsExporting(true);
+      downloadBookingsPdf({
+        bookings: exportFilteredBookings,
+        periodLabel:
+          selectedMonth === "ALL"
+            ? "All Time"
+            : formatMonthLabel(selectedMonth),
+        customer: customerInfo,
+      });
+    } catch (err) {
+      console.error("Failed to generate PDF statement:", err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const fetchBookings = useCallback(
     async (forceRefresh = false, options: { silent?: boolean } = {}) => {
@@ -119,6 +321,9 @@ function BookingsContent() {
           "Payment successfully confirmed! Your access pass is active.",
         );
         await fetchBookings(true, { silent: false });
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("daih:loyalty-updated"));
+        }
       })
       .catch((err) => {
         console.warn("Notice verifying payment on return:", err?.message);
@@ -228,29 +433,39 @@ function BookingsContent() {
 
   const now = new Date();
 
+  // Active Passes: Confirmed, Active, or Checked-in within their booking slot,
+  // OR on Midday Break (Checked Out while endTime is still in the future)
   const activeBookings = bookings.filter((b) => {
     const isStateActive = [
       BookingState.CONFIRMED,
       BookingState.ACTIVE,
       BookingState.CHECKED_IN,
+      BookingState.CHECKED_OUT,
     ].includes(b.state as BookingState);
     const notEnded = new Date(b.endTime) >= now;
     return isStateActive && notEnded;
   });
 
+  // Historical / Ended Bookings:
+  // 1. Any booking whose scheduled endTime has elapsed (including CHECKED_OUT, CHECKED_IN, CONFIRMED)
+  // 2. Terminal lifecycle states: COMPLETED, NO_SHOW, CANCELLED, EXPIRED
   const historicalBookings = bookings.filter((b) => {
-    const isStateActive = [
-      BookingState.CONFIRMED,
-      BookingState.ACTIVE,
-      BookingState.CHECKED_IN,
-    ].includes(b.state as BookingState);
     const isEnded = new Date(b.endTime) < now;
     const isLegitHistoricalState = [
       BookingState.COMPLETED,
       BookingState.NO_SHOW,
       BookingState.CANCELLED,
+      BookingState.EXPIRED,
     ].includes(b.state as BookingState);
-    return (isStateActive && isEnded) || isLegitHistoricalState;
+    const isPastSession =
+      [
+        BookingState.CONFIRMED,
+        BookingState.ACTIVE,
+        BookingState.CHECKED_IN,
+        BookingState.CHECKED_OUT,
+      ].includes(b.state as BookingState) && isEnded;
+
+    return isPastSession || isLegitHistoricalState;
   });
 
   const displayedBookings =
@@ -309,7 +524,15 @@ function BookingsContent() {
             passes.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setShowExportModal(true)}
+            className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-purple-200 bg-purple-50/70 hover:bg-purple-100 text-[#23055c] font-bold text-xs transition-all shadow-2xs cursor-pointer"
+            title="Download Statements & Financial Details"
+          >
+            <Download className="h-4 w-4 text-[#23055c]" />
+            <span>Download Statement</span>
+          </button>
           <button
             onClick={() => fetchBookings(true, { silent: true })}
             className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
@@ -396,6 +619,27 @@ function BookingsContent() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {displayedBookings.map((b) => {
+            const bStart = new Date(b.startTime);
+            const bEnd = new Date(b.endTime);
+            const todaySlotEnd =
+              bEnd.toDateString() === now.toDateString()
+                ? bEnd
+                : bEnd.getHours() !== bStart.getHours() ||
+                    bEnd.getMinutes() !== bStart.getMinutes()
+                  ? new Date(
+                      new Date(now).setHours(
+                        bEnd.getHours(),
+                        bEnd.getMinutes(),
+                        bEnd.getSeconds(),
+                        0,
+                      ),
+                    )
+                  : bEnd;
+
+            const isOnBreak =
+              b.state === BookingState.CHECKED_OUT &&
+              new Date(b.endTime) >= now &&
+              now < todaySlotEnd;
             const isNoShow =
               b.state === BookingState.NO_SHOW ||
               (!b.checkedInAt &&
@@ -403,6 +647,8 @@ function BookingsContent() {
                 new Date(b.endTime) < now);
             const isCompleted =
               b.state === BookingState.COMPLETED ||
+              (b.state === BookingState.CHECKED_OUT &&
+                new Date(b.endTime) < now) ||
               ((b.state === BookingState.CHECKED_IN ||
                 b.state === BookingState.ACTIVE) &&
                 new Date(b.endTime) < now);
@@ -410,7 +656,8 @@ function BookingsContent() {
               (b.state === BookingState.CONFIRMED ||
                 b.state === BookingState.CHECKED_IN) &&
               !isNoShow &&
-              !isCompleted;
+              !isCompleted &&
+              !isOnBreak;
             const isHeld = b.state === BookingState.HELD;
             const isPendingPayment = b.state === BookingState.PENDING_PAYMENT;
             const isCancelled = b.state === BookingState.CANCELLED;
@@ -434,9 +681,19 @@ function BookingsContent() {
                     </div>
                     <div>
                       {isConfirmed && (
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/60 flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3" />
-                          <span>Active / Confirmed</span>
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70 inline-flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <span>
+                            {b.state === BookingState.CHECKED_IN
+                              ? "Checked In"
+                              : "Confirmed"}
+                          </span>
+                        </span>
+                      )}
+                      {isOnBreak && (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200/70 inline-flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                          <span>On Break</span>
                         </span>
                       )}
                       {isPendingPayment && (
@@ -460,7 +717,11 @@ function BookingsContent() {
                       {isCompleted && (
                         <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3 text-slate-500" />
-                          <span>Completed</span>
+                          <span>
+                            {b.state === BookingState.CHECKED_OUT
+                              ? "Checked Out"
+                              : "Completed"}
+                          </span>
                         </span>
                       )}
                       {isExpired && (
@@ -504,6 +765,40 @@ function BookingsContent() {
 
                 {/* Actions */}
                 <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+                  {isOnBreak && (
+                    <>
+                      <Link
+                        href={`/qr?bookingId=${b.id}`}
+                        className="flex-1 bg-[#23055c] hover:bg-[#392271] text-white text-xs font-bold py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <QrCode className="h-3.5 w-3.5" />
+                        <span>Re-enter / QR Pass</span>
+                      </Link>
+                      <button
+                        onClick={() => handleOpenReview(b)}
+                        disabled={checkingReviewId === b.id}
+                        className="px-3 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
+                        title="Rate & Review Workspace"
+                      >
+                        {checkingReviewId === b.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Star className="h-3.5 w-3.5 fill-current" />
+                        )}
+                        <span>Rate Stay</span>
+                      </button>
+                      <button
+                        onClick={() => handleViewInvoice(b)}
+                        disabled={loadingInvoice}
+                        className="px-3 py-2.5 border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
+                        title="View Official Receipt"
+                      >
+                        <Receipt className="h-3.5 w-3.5" />
+                        <span>Receipt</span>
+                      </button>
+                    </>
+                  )}
+
                   {isConfirmed && (
                     <>
                       <Link
@@ -527,6 +822,21 @@ function BookingsContent() {
 
                   {(isNoShow || isCompleted) && (
                     <>
+                      {isCompleted && (
+                        <button
+                          onClick={() => handleOpenReview(b)}
+                          disabled={checkingReviewId === b.id}
+                          className="px-3 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
+                          title="Rate & Review Workspace"
+                        >
+                          {checkingReviewId === b.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Star className="h-3.5 w-3.5 fill-current" />
+                          )}
+                          <span>Rate Stay</span>
+                        </button>
+                      )}
                       <button
                         onClick={() => handleViewInvoice(b)}
                         disabled={loadingInvoice}
@@ -786,6 +1096,199 @@ function BookingsContent() {
             </div>
           </div>
         </div>
+      )}
+      {/* Statement & Financials Download Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 space-y-5 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-2xl bg-[#23055c]/10 text-[#23055c] flex items-center justify-center shrink-0">
+                  <Download className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    Download Statement &amp; Details
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Export your reservations and financial summary
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowExportModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Period Selection */}
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                Select Period / Month
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="w-full text-xs font-semibold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:border-[#23055c] focus:bg-white transition-colors cursor-pointer appearance-none pr-8"
+                >
+                  <option value="ALL">
+                    All Time (All Bookings - {statementEligibleBookings.length})
+                  </option>
+                  {availableMonths.map((ym) => (
+                    <option key={ym} value={ym}>
+                      {formatMonthLabel(ym)} ({getMonthCount(ym)}{" "}
+                      {getMonthCount(ym) === 1 ? "booking" : "bookings"})
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                  <Calendar className="h-4 w-4" />
+                </div>
+              </div>
+            </div>
+
+            {/* Metrics Overview Card */}
+            <div className="bg-[#faf9ff] border border-[#23055c]/10 rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#23055c]">
+                  Period Summary (
+                  {selectedMonth === "ALL"
+                    ? "All Time"
+                    : formatMonthLabel(selectedMonth)}
+                  )
+                </span>
+                <span className="text-[11px] font-bold text-slate-500">
+                  {exportStats.totalCount}{" "}
+                  {exportStats.totalCount === 1
+                    ? "reservation"
+                    : "reservations"}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-2xs">
+                  <span className="block text-[10px] uppercase font-bold text-slate-400">
+                    Bookings
+                  </span>
+                  <span className="text-sm font-extrabold text-slate-800">
+                    {exportStats.totalCount}
+                  </span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-2xs">
+                  <span className="block text-[10px] uppercase font-bold text-slate-400">
+                    Total Spend
+                  </span>
+                  <span className="text-sm font-extrabold text-[#23055c]">
+                    ₦{exportStats.totalSpend.toLocaleString()}
+                  </span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-2xs">
+                  <span className="block text-[10px] uppercase font-bold text-slate-400">
+                    Discounts
+                  </span>
+                  <span className="text-sm font-extrabold text-emerald-600">
+                    ₦{exportStats.totalDiscount.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Export Format Actions */}
+            <div className="space-y-2.5">
+              <span className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                Choose Export Format
+              </span>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {/* PDF Statement */}
+                <button
+                  type="button"
+                  onClick={handleDownloadPdf}
+                  disabled={isExporting || exportFilteredBookings.length === 0}
+                  className="p-3.5 rounded-2xl border border-[#23055c]/20 bg-[#23055c] hover:bg-[#34117c] text-white transition-all text-left flex flex-col justify-between gap-3 group cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="h-8 w-8 rounded-xl bg-white/10 flex items-center justify-center">
+                      <FileText className="h-4 w-4 text-white" />
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/20 text-white">
+                      .PDF
+                    </span>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white group-hover:underline">
+                      PDF Statement
+                    </h4>
+                    <p className="text-[10px] text-white/80 mt-0.5 leading-tight">
+                      Branded statement with VAT &amp; verification details
+                    </p>
+                  </div>
+                </button>
+
+                {/* CSV Spreadsheet */}
+                <button
+                  type="button"
+                  onClick={handleDownloadCsv}
+                  disabled={isExporting || exportFilteredBookings.length === 0}
+                  className="p-3.5 rounded-2xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100/80 text-emerald-950 transition-all text-left flex flex-col justify-between gap-3 group cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs hover:shadow-xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="h-8 w-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
+                      <FileSpreadsheet className="h-4 w-4" />
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200/70 text-emerald-900">
+                      .CSV
+                    </span>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-emerald-950 group-hover:underline">
+                      Excel / CSV Export
+                    </h4>
+                    <p className="text-[10px] text-emerald-700 mt-0.5 leading-tight">
+                      Full tabular data with all transaction columns
+                    </p>
+                  </div>
+                </button>
+              </div>
+              {exportFilteredBookings.length === 0 && (
+                <p className="text-center text-xs text-amber-600 font-medium pt-1">
+                  No reservations found for this period.
+                </p>
+              )}
+            </div>
+
+            {/* Footer Close */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowExportModal(false)}
+                className="w-full py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Review Modal */}
+      {showReviewModal && (
+        <ReviewModal
+          isOpen={showReviewModal}
+          booking={reviewBooking}
+          existingReview={existingReview}
+          onClose={() => {
+            setShowReviewModal(false);
+            setReviewBooking(null);
+            setExistingReview(null);
+          }}
+          onSuccess={() => {
+            fetchBookings(true, { silent: true });
+          }}
+        />
       )}
     </div>
   );

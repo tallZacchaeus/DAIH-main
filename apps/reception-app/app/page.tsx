@@ -26,6 +26,11 @@ import {
   Shield,
   ArrowRight,
   HelpCircle,
+  Calendar,
+  MapPin,
+  AlertTriangle,
+  Info,
+  UserCheck,
 } from "lucide-react";
 import { api, useAuth } from "@daih/api-client";
 import {
@@ -41,6 +46,37 @@ import {
 import { Html5Qrcode } from "html5-qrcode";
 
 type ScannerMode = "CAMERA" | "HARDWARE" | "MANUAL";
+
+function formatDateTime(dateStr?: string | null) {
+  if (!dateStr) return "--";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+function formatTimeOnly(dateStr?: string | null) {
+  if (!dateStr) return "--";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return dateStr;
+  }
+}
 
 /**
  * Plays a pleasant scan beep using Web Audio API
@@ -811,144 +847,307 @@ export default function ReceptionScannerPage() {
             </div>
           )}
 
-          {/* Scenario 1: Active Verified Pass */}
-          {verificationResult?.valid && verificationResult.booking ? (
-            <div className="bg-white border border-emerald-300 rounded-2xl p-6 shadow-sm space-y-5">
-              {/* Pass Validity Header */}
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                    <CheckCircle2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-emerald-800">
-                      Valid Access Pass
-                    </h3>
-                    <p className="text-[11px] text-slate-500 font-medium">
-                      {verificationResult.isReEntry
-                        ? "Member Returning (Same-Day Re-Entry)"
-                        : "Ready for Terminal Action"}
-                    </p>
-                  </div>
-                </div>
-
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                    verificationResult.booking.state === BookingState.CHECKED_IN
-                      ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
-                      : verificationResult.booking.state ===
-                          BookingState.CHECKED_OUT
-                        ? "bg-amber-100 text-amber-800 border border-amber-200"
-                        : "bg-purple-100 text-[#23055c] border border-purple-200"
-                  }`}
-                >
-                  {verificationResult.booking.state}
-                </span>
-              </div>
-
-              {/* Member & Reservation Summary */}
-              <div className="space-y-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-[11px] uppercase font-bold text-slate-400 tracking-wider">
-                      Member Name
-                    </p>
-                    <p className="text-base font-extrabold text-[#181c20] mt-0.5">
-                      {verificationResult.booking.customerName}
-                    </p>
-                    {verificationResult.booking.clientId && (
-                      <p className="text-xs text-[#23055c] font-mono font-semibold">
-                        {verificationResult.booking.clientId}
+          {/* Main Inspection: Comprehensive Booking Details Card */}
+          {verificationResult?.booking ? (
+            <div
+              className={`bg-white border rounded-2xl p-5 sm:p-6 shadow-sm space-y-5 transition-all ${
+                verificationResult.valid
+                  ? "border-emerald-300 ring-1 ring-emerald-200/60"
+                  : verificationResult.rejectionReason ===
+                        AccessRejectionReason.EXPIRED &&
+                      verificationResult.rejectionDetails?.isDailySlotRejection
+                    ? "border-amber-300 ring-1 ring-amber-200/60"
+                    : "border-rose-300 ring-1 ring-rose-200/60"
+              }`}
+            >
+              {/* Top Status & Diagnostic Banner */}
+              <div
+                className={`p-4 rounded-xl border flex flex-col gap-2.5 ${
+                  verificationResult.valid
+                    ? "bg-emerald-50/80 border-emerald-200"
+                    : verificationResult.rejectionReason ===
+                          AccessRejectionReason.EXPIRED &&
+                        verificationResult.rejectionDetails
+                          ?.isDailySlotRejection
+                      ? "bg-amber-50/80 border-amber-200"
+                      : "bg-rose-50/80 border-rose-200"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center font-bold flex-shrink-0 ${
+                        verificationResult.valid
+                          ? "bg-emerald-100 text-emerald-700"
+                          : verificationResult.rejectionReason ===
+                                AccessRejectionReason.EXPIRED &&
+                              verificationResult.rejectionDetails
+                                ?.isDailySlotRejection
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-rose-100 text-rose-700"
+                      }`}
+                    >
+                      {verificationResult.valid ? (
+                        <CheckCircle2 className="w-5 h-5" />
+                      ) : (
+                        <XCircle className="w-5 h-5" />
+                      )}
+                    </div>
+                    <div>
+                      <h3
+                        className={`text-sm font-bold ${
+                          verificationResult.valid
+                            ? "text-emerald-900"
+                            : verificationResult.rejectionReason ===
+                                  AccessRejectionReason.EXPIRED &&
+                                verificationResult.rejectionDetails
+                                  ?.isDailySlotRejection
+                              ? "text-amber-900"
+                              : "text-rose-900"
+                        }`}
+                      >
+                        {verificationResult.valid
+                          ? "Valid Access Pass"
+                          : verificationResult.rejectionTitle ||
+                            "Access Pass Restricted"}
+                      </h3>
+                      <p className="text-[11px] text-slate-600 font-medium">
+                        {verificationResult.valid
+                          ? verificationResult.isReEntry
+                            ? "Member Returning (Same-Day Re-Entry)"
+                            : "Ready for Terminal Action"
+                          : `Reason: ${verificationResult.rejectionReason}`}
                       </p>
-                    )}
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-[11px] uppercase font-bold text-slate-400 tracking-wider">
-                      Booking Reference
-                    </p>
-                    <p className="text-xs font-mono font-bold text-slate-800 mt-0.5">
-                      {verificationResult.booking.reference}
-                    </p>
-                  </div>
+
+                  {/* Status Badge */}
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                      verificationResult.booking.state ===
+                      BookingState.CHECKED_IN
+                        ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                        : verificationResult.booking.state ===
+                            BookingState.CHECKED_OUT
+                          ? "bg-amber-100 text-amber-800 border border-amber-200"
+                          : verificationResult.booking.state ===
+                              BookingState.EXPIRED
+                            ? "bg-slate-200 text-slate-800 border border-slate-300"
+                            : "bg-purple-100 text-[#23055c] border border-purple-200"
+                    }`}
+                  >
+                    {verificationResult.booking.state}
+                  </span>
                 </div>
 
-                <div className="p-4 bg-[#F8F9FA] rounded-xl space-y-2.5 border border-slate-200 text-xs text-slate-700">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Workspace Resource:</span>
-                    <span className="font-bold text-[#181c20]">
-                      {verificationResult.booking.resourceName}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Scheduled Time Slot:</span>
-                    <span className="font-medium text-slate-800">
-                      {new Date(
-                        verificationResult.booking.startTime,
-                      ).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}{" "}
-                      —{" "}
-                      {new Date(
-                        verificationResult.booking.endTime,
-                      ).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  </div>
-                  {verificationResult.booking.checkedInAt && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">First Check-In:</span>
-                      <span className="text-emerald-700 font-mono font-bold">
-                        {new Date(
-                          verificationResult.booking.checkedInAt,
-                        ).toLocaleTimeString()}
-                      </span>
-                    </div>
-                  )}
-                  {verificationResult.booking.checkedOutAt && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Last Departure:</span>
-                      <span className="text-amber-700 font-mono font-bold">
-                        {new Date(
-                          verificationResult.booking.checkedOutAt,
-                        ).toLocaleTimeString()}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                {/* Explanatory Message & Front-Desk Guidance for Invalid Passes */}
+                {!verificationResult.valid && (
+                  <div className="pt-2 border-t border-slate-200/60 space-y-2 text-xs">
+                    <p className="font-semibold text-slate-800 leading-relaxed">
+                      {verificationResult.rejectionMessage}
+                    </p>
 
-                {/* Wi-Fi Credential Card */}
-                {verificationResult.booking.wifiCredentials && (
-                  <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 text-xs flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <Wifi className="w-5 h-5 text-emerald-700 flex-shrink-0" />
-                      <div>
-                        <p className="font-bold text-emerald-900">
-                          {verificationResult.booking.wifiCredentials.ssid}
-                        </p>
-                        <p className="text-[11px] text-slate-600 font-mono">
-                          User:{" "}
-                          <span className="text-slate-900 font-semibold">
-                            {
-                              verificationResult.booking.wifiCredentials
-                                .username
-                            }
-                          </span>{" "}
-                          · PIN:{" "}
-                          <span className="text-amber-700 font-bold">
-                            {verificationResult.booking.wifiCredentials.pin}
+                    {/* Operational Guidance for Receptionist */}
+                    {verificationResult.rejectionDetails?.policyNotice && (
+                      <div className="p-2.5 bg-white/80 rounded-lg border border-slate-200/70 text-[11px] text-slate-700 flex items-start gap-2">
+                        <Info className="w-4 h-4 text-[#23055c] flex-shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold text-slate-900">
+                            Receptionist Notice:{" "}
                           </span>
-                        </p>
+                          <span>
+                            {verificationResult.rejectionDetails.policyNotice}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                      Active
-                    </span>
+                    )}
                   </div>
                 )}
               </div>
+
+              {/* Member Profile Card (Email and Phone completely omitted for Privacy) */}
+              <div className="p-4 bg-slate-50/70 rounded-xl border border-slate-200/80 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-[#23055c] text-white flex items-center justify-center font-bold text-base shadow-xs">
+                    {verificationResult.booking.customerName
+                      ?.charAt(0)
+                      ?.toUpperCase() || "M"}
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                      Member Profile
+                    </p>
+                    <p className="text-base font-extrabold text-[#181c20] leading-tight">
+                      {verificationResult.booking.customerName}
+                    </p>
+                    {verificationResult.booking.clientId && (
+                      <span className="inline-block mt-0.5 px-2 py-0.5 rounded bg-purple-50 text-[#23055c] text-[11px] font-mono font-bold border border-purple-200">
+                        {verificationResult.booking.clientId}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                    Booking Reference
+                  </p>
+                  <p className="text-xs font-mono font-bold text-[#23055c] bg-white px-2.5 py-1 rounded-lg border border-slate-200 mt-0.5">
+                    {verificationResult.booking.reference}
+                  </p>
+                </div>
+              </div>
+
+              {/* Workspace Resource & Allocation Details */}
+              <div className="p-4 bg-[#F8F9FA] rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="space-y-1">
+                  <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-[#23055c]" />
+                    <span>Allocated Workspace</span>
+                  </p>
+                  <p className="font-extrabold text-[#181c20] text-sm sm:text-base">
+                    {verificationResult.booking.resourceName}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    {verificationResult.booking.category || "Coworking Space"}
+                    {verificationResult.booking.resourceLocation &&
+                      ` · ${verificationResult.booking.resourceLocation}`}
+                  </p>
+                </div>
+
+                <div className="flex sm:flex-col sm:items-end gap-2 text-right">
+                  {verificationResult.booking.planName && (
+                    <span className="px-2.5 py-1 rounded-md bg-purple-50 text-[#23055c] text-[11px] font-bold border border-purple-200">
+                      {verificationResult.booking.planName}
+                    </span>
+                  )}
+                  {verificationResult.booking.resourceCapacity && (
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      Capacity: {verificationResult.booking.resourceCapacity}{" "}
+                      Seat(s)
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Time Slots & Schedule Windows */}
+              <div className="p-4 bg-[#F8F9FA] rounded-xl border border-slate-200 space-y-3 text-xs text-slate-700">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-2.5 border-b border-slate-200/80">
+                  <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+                    <Calendar className="w-3.5 h-3.5 text-[#23055c]" />
+                    <span>Reservation Period:</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-bold text-[#181c20]">
+                      {formatDateTime(verificationResult.booking.startTime)} —{" "}
+                      {formatDateTime(verificationResult.booking.endTime)}
+                    </span>
+                    {verificationResult.booking.isMultiDay && (
+                      <span className="ml-2 px-2 py-0.5 rounded-full bg-purple-100 text-[#23055c] text-[10px] font-bold">
+                        {verificationResult.booking.totalDays}-Day Pass (Day{" "}
+                        {verificationResult.booking.currentDayNumber} of{" "}
+                        {verificationResult.booking.totalDays})
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+                    <Clock className="w-3.5 h-3.5 text-[#23055c]" />
+                    <span>Today's Daily Access Window:</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-[#181c20]">
+                      {verificationResult.booking.dailySlotHours ||
+                        `${new Date(verificationResult.booking.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} — ${new Date(verificationResult.booking.endTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        verificationResult.booking.isSlotConcludedToday
+                          ? "bg-rose-100 text-rose-800"
+                          : "bg-emerald-100 text-emerald-800"
+                      }`}
+                    >
+                      {verificationResult.booking.isSlotConcludedToday
+                        ? "Concluded Today"
+                        : "Operating Window Open"}
+                    </span>
+                  </div>
+                </div>
+
+                {verificationResult.booking.checkedInAt && (
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                    <span className="text-slate-500">
+                      First Check-In Today:
+                    </span>
+                    <span className="text-emerald-700 font-mono font-bold">
+                      {formatTimeOnly(verificationResult.booking.checkedInAt)}
+                    </span>
+                  </div>
+                )}
+
+                {verificationResult.booking.checkedOutAt && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">
+                      Last Departure Today:
+                    </span>
+                    <span className="text-amber-700 font-mono font-bold">
+                      {formatTimeOnly(verificationResult.booking.checkedOutAt)}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                  <span className="text-slate-500">Total Visit Sessions:</span>
+                  <span className="text-slate-800 font-semibold">
+                    {verificationResult.booking.visitCount || 0} session(s)
+                    recorded
+                  </span>
+                </div>
+              </div>
+
+              {/* Wi-Fi Credential Card */}
+              {verificationResult.booking.wifiCredentials ? (
+                <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Wifi className="w-5 h-5 text-emerald-700 flex-shrink-0" />
+                    <div>
+                      <p className="font-bold text-emerald-900">
+                        {verificationResult.booking.wifiCredentials.ssid}
+                      </p>
+                      <p className="text-[11px] text-slate-600 font-mono">
+                        User:{" "}
+                        <span className="text-slate-900 font-semibold">
+                          {verificationResult.booking.wifiCredentials.username}
+                        </span>{" "}
+                        · PIN:{" "}
+                        <span className="text-amber-700 font-bold">
+                          {verificationResult.booking.wifiCredentials.pin}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    Active
+                  </span>
+                </div>
+              ) : (
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex items-center justify-between text-slate-500">
+                  <div className="flex items-center gap-2">
+                    <Wifi className="w-4 h-4 text-slate-400" />
+                    <span>Member Wi-Fi Access</span>
+                  </div>
+                  <span className="text-[11px] font-semibold text-slate-600">
+                    {verificationResult.booking.wifiStatus === "EXPIRED"
+                      ? "Expired with Pass"
+                      : verificationResult.booking.wifiStatus ===
+                          "LOCKED_PENDING_DAILY_CHECKIN"
+                        ? "Locked (Requires Daily Check-In)"
+                        : "Locked"}
+                  </span>
+                </div>
+              )}
 
               {/* Dynamic Action Buttons */}
               <div className="pt-2 flex flex-col sm:flex-row gap-3">
@@ -982,12 +1181,12 @@ export default function ReceptionScannerPage() {
                   onClick={handleClearVerification}
                   className="px-5 py-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
                 >
-                  Clear
+                  Dismiss &amp; Next Scan
                 </button>
               </div>
             </div>
           ) : verificationResult && !verificationResult.valid ? (
-            /* Scenario 2: Explicit Rejection Diagnostics Matrix */
+            /* Scenario 2: Rejection Diagnostics when no booking record found */
             <div className="bg-white border border-rose-200 rounded-2xl p-6 shadow-sm space-y-5">
               <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
                 <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-bold flex-shrink-0">
@@ -1007,75 +1206,10 @@ export default function ReceptionScannerPage() {
                 </div>
               </div>
 
-              {/* Explanatory Message */}
               <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-3 text-xs">
                 <p className="text-rose-900 leading-relaxed font-medium">
                   {verificationResult.rejectionMessage}
                 </p>
-
-                {/* Detailed Diagnostic Sub-Card */}
-                {verificationResult.rejectionReason ===
-                  AccessRejectionReason.TOO_EARLY &&
-                  verificationResult.rejectionDetails && (
-                    <div className="p-3 bg-white rounded-lg border border-rose-100 space-y-1.5 text-[11px]">
-                      <div className="flex justify-between">
-                        <span className="text-slate-500 font-medium">
-                          Scheduled Start Time:
-                        </span>
-                        <span className="text-amber-700 font-bold">
-                          {new Date(
-                            verificationResult.rejectionDetails
-                              .scheduledStartTime || "",
-                          ).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="text-slate-500 pt-1">
-                        {verificationResult.rejectionDetails.policyNotice}
-                      </p>
-                    </div>
-                  )}
-
-                {verificationResult.rejectionReason ===
-                  AccessRejectionReason.NO_SHOW &&
-                  verificationResult.rejectionDetails?.auditProof && (
-                    <div className="p-3 bg-white rounded-lg border border-rose-200 space-y-2 text-[11px]">
-                      <p className="font-bold text-rose-700 uppercase tracking-wider text-[10px]">
-                        Tamper-Proof Audit Proof
-                      </p>
-                      <div className="space-y-1 text-slate-600">
-                        <div className="flex justify-between">
-                          <span>Ref:</span>
-                          <span className="font-mono text-slate-900 font-bold">
-                            {
-                              verificationResult.rejectionDetails.auditProof
-                                .bookingReference
-                            }
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Scheduled Window:</span>
-                          <span className="text-slate-800">
-                            {
-                              verificationResult.rejectionDetails.auditProof
-                                .unredeemedWindow
-                            }
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Terminal Scan:</span>
-                          <span className="text-slate-800">
-                            {new Date(
-                              verificationResult.rejectionDetails.auditProof
-                                .scannedAt,
-                            ).toLocaleTimeString()}
-                          </span>
-                        </div>
-                      </div>
-                      <p className="text-slate-500 text-[10px] pt-1 border-t border-slate-100">
-                        {verificationResult.rejectionDetails.policyNotice}
-                      </p>
-                    </div>
-                  )}
               </div>
 
               <div className="pt-2">
@@ -1083,7 +1217,7 @@ export default function ReceptionScannerPage() {
                   onClick={handleClearVerification}
                   className="w-full py-3.5 rounded-xl bg-[#23055c] hover:bg-[#392271] text-white font-bold text-xs transition cursor-pointer shadow-xs"
                 >
-                  Dismiss & Scan Next Pass
+                  Dismiss &amp; Scan Next Pass
                 </button>
               </div>
             </div>

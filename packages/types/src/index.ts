@@ -10,3 +10,6 @@ export * from "./legal.types";
 export * from "./discount.types";
 export * from "./support.types";
 export * from "./notification.types";
+export * from "./loyalty.types";
+export * from "./review.types";
+export * from "./campaign.types";

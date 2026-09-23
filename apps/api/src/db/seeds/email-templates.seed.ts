@@ -345,7 +345,7 @@ export const INITIAL_EMAIL_TEMPLATES = [
     type: "check_out_summary",
     subject: "Departure Recorded: Booking {{bookingReference}} — DAIH Hub",
     textBody:
-      "Hello {{customerName}},\n\nYour departure from {{resourceName}} was recorded at {{formattedDeparture}}. Thank you for visiting DAIH!",
+      "Hello {{customerName}},\n\nYour departure from {{resourceName}} was recorded at {{formattedDeparture}}. Thank you for visiting DAIH!\n\n{{#if reviewUrl}}How was your session? Leave a review here: {{reviewUrl}}{{/if}}",
     htmlBody: `<!DOCTYPE html>
 <html>
 <head>
@@ -358,15 +358,66 @@ export const INITIAL_EMAIL_TEMPLATES = [
       <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 800;">Thank You for Visiting!</h1>
     </div>
     <div style="padding: 32px;">
-      <p style="color: #475569; font-size: 14px; line-height: 1.6;">Hello {{customerName}},</p>
-      <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+      <p style="color: #1e293b; font-size: 14px; line-height: 1.6;">Hello {{customerName}},</p>
+      <p style="color: #334155; font-size: 14px; line-height: 1.6;">
         Your departure from <strong>{{resourceName}}</strong> (Ref: <code>{{bookingReference}}</code>) was recorded at <strong>{{formattedDeparture}}</strong>.
       </p>
-      <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+      <p style="color: #334155; font-size: 14px; line-height: 1.6;">
         If you stepped out for lunch or meetings and your booking slot has not elapsed, you can scan your pass at reception to re-enter at any time before your scheduled end time.
       </p>
+      {{#if reviewUrl}}
+      <div style="background-color: #faf9ff; border: 1px solid #ebe7f5; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: center;">
+        <p style="color: #1e293b; font-size: 14px; font-weight: 700; margin: 0 0 6px 0;">How was your session?</p>
+        <p style="color: #475569; font-size: 13px; margin: 0 0 16px 0;">We would love to hear your feedback on your stay at {{resourceName}}.</p>
+        <a href="{{reviewUrl}}" style="background-color: #23055c; color: #ffffff; padding: 10px 22px; font-size: 13px; font-weight: 700; text-decoration: none; border-radius: 8px; display: inline-block;">
+          Leave a Review
+        </a>
+      </div>
+      {{/if}}
       <p style="color: #64748b; font-size: 12px; line-height: 1.5; margin-top: 24px;">
         We look forward to hosting you again soon at DAIH Workspace Hub.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`,
+  },
+  {
+    type: "booking_completed_review",
+    subject: "How was your session? Leave a Review — DAIH Hub",
+    textBody:
+      "Hello {{customerName}},\n\nThank you for choosing DAIH Hub! How was your session at {{resourceName}} (Ref: {{bookingReference}})? We'd love to hear your feedback.\n\nLeave your review here: {{reviewUrl}}\n\nBest regards,\nDAIH Workspace Team",
+    htmlBody: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>How was your session? Leave a Review — DAIH Hub</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 40px 20px;">
+  <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background-color: #23055c; padding: 28px 32px; text-align: center;">
+      <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 800;">How was your session?</h1>
+      <p style="color: #e2d9f3; margin: 8px 0 0 0; font-size: 14px;">Leave a Review &bull; DAIH Hub</p>
+    </div>
+    <div style="padding: 32px;">
+      <p style="color: #1e293b; font-size: 14px; line-height: 1.6; margin-top: 0;">Hello {{customerName}},</p>
+      <p style="color: #334155; font-size: 14px; line-height: 1.6;">
+        Thank you for spending your session with us at <strong>{{resourceName}}</strong> (Booking Ref: <code>{{bookingReference}}</code>). We hope everything was seamless, productive, and comfortable.
+      </p>
+      <div style="text-align: center; margin: 24px 0 8px 0;">
+        <span style="font-size: 26px; color: #f59e0b; letter-spacing: 4px;">&#9733;&#9733;&#9733;&#9733;&#9733;</span>
+      </div>
+      <p style="color: #334155; font-size: 14px; line-height: 1.6; text-align: center;">
+        Your feedback helps other members choose the best space and helps our team keep elevating the workspace experience.
+      </p>
+      <div style="margin: 28px 0; text-align: center;">
+        <a href="{{reviewUrl}}" style="background-color: #23055c; color: #ffffff; padding: 14px 32px; font-size: 14px; font-weight: 700; text-decoration: none; border-radius: 12px; display: inline-block;">
+          Leave a Review
+        </a>
+      </div>
+      <p style="color: #64748b; font-size: 12px; line-height: 1.5; text-align: center; margin-bottom: 0;">
+        Or copy and paste this link in your browser:<br>
+        <span style="color: #334155; word-break: break-all;">{{reviewUrl}}</span>
       </p>
     </div>
   </div>

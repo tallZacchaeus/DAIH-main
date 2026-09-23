@@ -3,7 +3,11 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { api } from "@daih/api-client";
-import { FacilityResource, ResourcePricingPlan } from "@daih/types";
+import {
+  FacilityResource,
+  ResourcePricingPlan,
+  decodeHtmlEntities,
+} from "@daih/types";
 import { Loader2 } from "lucide-react";
 import { getWorkspaceImage } from "../lib/image-utils";
 import { getPortalBookingUrl } from "../lib/config";
@@ -210,7 +214,7 @@ export const WorkspaceDetailView: React.FC<WorkspaceDetailViewProps> = ({
               <ul className="ul-style-2 row">
                 {(resource.amenities || []).map((item: string, idx: number) => (
                   <li key={idx} className="col-md-6 mb-2">
-                    {item}
+                    {decodeHtmlEntities(item)}
                   </li>
                 ))}
               </ul>

@@ -44,6 +44,7 @@ import {
   AdminAnalyticsSummaryDTO,
   ReceptionTerminalSummaryDTO,
   LoginApiResponse,
+  GoogleAuthResponseDTO,
   MfaSetupInitResponse,
   MfaMethod,
   SetupAccountResponse,
@@ -68,6 +69,34 @@ import {
   NotificationDTO,
   NotificationListResponse,
   NotificationUnreadCountResponse,
+  LoyaltyWalletDTO,
+  LoyaltyTransactionDTO,
+  LoyaltyLedgerListResponse,
+  LoyaltySettingsRecord,
+  UpdateLoyaltySettingsDTO,
+  AdminLoyaltyStatsDTO,
+  AdminManualAdjustmentDTO,
+  RedemptionPreviewRequestDTO,
+  RedemptionPreviewResponseDTO,
+  LoyaltySettingsAuditDTO,
+  ReviewDTO,
+  ReviewSettingDTO,
+  CreateReviewDTO,
+  UpdateReviewDTO,
+  AdminReviewFilterDTO,
+  UpdateReviewStatusDTO,
+  UpdateReviewSettingDTO,
+  AdminReplyDTO,
+  ReviewEligibilityDTO,
+  ResourceReviewsSummaryDTO,
+  RaiseRefundRequestDTO,
+  RefundRequestItemDTO,
+  CampaignDTO,
+  CreateCampaignDTO,
+  UpdateCampaignDTO,
+  GenerateCopyRequestDTO,
+  GenerateCopyResponseDTO,
+  CampaignMetricDTO,
 } from "@daih/types";
 import { apiCacheManager } from "./cache";
 
@@ -183,6 +212,19 @@ export class DaihApiClient {
       headers.set("Content-Type", "application/json");
     }
 
+    // If a token refresh is currently in flight, wait for it so we don't send expired tokens
+    if (
+      this.isRefreshing &&
+      retryOnAuthFailure &&
+      !cleanEndpoint.includes("/identity/refresh") &&
+      !cleanEndpoint.includes("/identity/login") &&
+      !cleanEndpoint.includes("/identity/register")
+    ) {
+      await new Promise<string | null>((resolve) => {
+        this.addRefreshSubscriber((newToken) => resolve(newToken));
+      });
+    }
+
     const token = await this.getAccessToken();
     if (token && !headers.has("Authorization")) {
       headers.set("Authorization", `Bearer ${token}`);
@@ -287,6 +329,45 @@ export class DaihApiClient {
       return { ...res, token: jwt || "" };
     },
 
+    loginWithGoogle: async (
+      idToken: string,
+      referralCode?: string,
+      portal?: "customer" | "admin" | string,
+    ): Promise<GoogleAuthResponseDTO> => {
+      const res = await this.request<any>("/identity/auth/google", {
+        method: "POST",
+        body: JSON.stringify({ idToken, referralCode, portal }),
+      });
+      const jwt = res.accessToken || res.token || "";
+      if (jwt) {
+        this.setAccessToken(jwt);
+      }
+      return { ...res, accessToken: jwt, token: jwt };
+    },
+
+    submitOnboardingAttribution: (data: {
+      source?: string;
+      referralCode?: string;
+    }): Promise<UserProfile> =>
+      this.request<UserProfile>("/identity/me/onboarding-attribution", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
+    capturePolicyConsent: (data: {
+      policyVersion?: string;
+      consented: boolean;
+      marketingConsent?: boolean;
+    }): Promise<{ user: UserProfile }> =>
+      this.request<{ user: UserProfile }>("/identity/consent", {
+        method: "POST",
+        body: JSON.stringify({
+          policyVersion: data.policyVersion || "1.0",
+          consented: data.consented,
+          marketingConsent: data.marketingConsent,
+        }),
+      }),
+
     setupMfa: (payload: { setupToken: string; method: MfaMethod }) =>
       this.request<MfaSetupInitResponse>("/identity/mfa/setup", {
         method: "POST",
@@ -375,9 +456,14 @@ export class DaihApiClient {
             accessToken?: string;
             user: UserProfile;
             token?: string;
-          }>("/identity/refresh", {
-            method: "POST",
-          });
+          }>(
+            "/identity/refresh",
+            {
+              method: "POST",
+            },
+            false,
+          );
+
           const token = res.accessToken || res.token;
           if (token) {
             this.setAccessToken(token);
@@ -445,6 +531,33 @@ export class DaihApiClient {
           method: "DELETE",
         },
       ),
+
+    initiateProfileMfa: (method: MfaMethod) =>
+      this.request<{
+        method: MfaMethod;
+        qrCodeDataUri?: string;
+        manualEntryKey?: string;
+        ephemeralSecret?: string;
+        message?: string;
+      }>("/identity/me/mfa/initiate", {
+        method: "POST",
+        body: JSON.stringify({ method }),
+      }),
+
+    confirmProfileMfa: (data: {
+      method: MfaMethod;
+      code: string;
+      ephemeralSecret?: string;
+    }) =>
+      this.request<{
+        success: boolean;
+        message: string;
+        user: UserProfile;
+        method: MfaMethod;
+      }>("/identity/me/mfa/confirm", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
 
     verifyEmail: (token: string) =>
       this.request<{ success: boolean; message: string }>(
@@ -945,6 +1058,10 @@ export class DaihApiClient {
       apiCacheManager.invalidate("payment_history");
       apiCacheManager.invalidate("cal_avail");
       apiCacheManager.invalidate("avail_");
+      apiCacheManager.invalidate("my_loyalty_wallet");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("daih:loyalty-updated"));
+      }
       return res;
     },
 
@@ -1004,6 +1121,171 @@ export class DaihApiClient {
         `/payments/admin/daily-summary${queryStr}`,
       );
     },
+
+    // Dual-Authorization Refund Workflow
+    raiseRefund: (dto: RaiseRefundRequestDTO) =>
+      this.request<{ success: boolean; data: RefundRequestItemDTO }>(
+        "/payments/admin/refunds",
+        {
+          method: "POST",
+          body: JSON.stringify(dto),
+        },
+      ),
+
+    listRefunds: async (filters?: {
+      status?: string;
+      page?: number;
+      limit?: number;
+    }) => {
+      const params = new URLSearchParams();
+      if (filters?.status) params.set("status", filters.status);
+      if (filters?.page) params.set("page", String(filters.page));
+      if (filters?.limit) params.set("limit", String(filters.limit));
+      const queryStr = params.toString() ? `?${params.toString()}` : "";
+      return this.request<{
+        success: boolean;
+        items: RefundRequestItemDTO[];
+        total: number;
+        page: number;
+        totalPages: number;
+      }>(`/payments/admin/refunds${queryStr}`);
+    },
+
+    getRefund: (id: string) =>
+      this.request<{ success: boolean; data: RefundRequestItemDTO }>(
+        `/payments/admin/refunds/${id}`,
+      ),
+
+    requestRefundInfo: (id: string, question: string) =>
+      this.request<{ success: boolean; data: RefundRequestItemDTO }>(
+        `/payments/admin/refunds/${id}/request-info`,
+        {
+          method: "POST",
+          body: JSON.stringify({ question }),
+        },
+      ),
+
+    provideRefundInfo: (id: string, response: string) =>
+      this.request<{ success: boolean; data: RefundRequestItemDTO }>(
+        `/payments/admin/refunds/${id}/provide-info`,
+        {
+          method: "POST",
+          body: JSON.stringify({ response }),
+        },
+      ),
+
+    approveRefund: (id: string) =>
+      this.request<{ success: boolean; data: RefundRequestItemDTO }>(
+        `/payments/admin/refunds/${id}/approve`,
+        {
+          method: "POST",
+        },
+      ),
+
+    rejectRefund: (id: string, rejectionReason: string) =>
+      this.request<{ success: boolean; data: RefundRequestItemDTO }>(
+        `/payments/admin/refunds/${id}/reject`,
+        {
+          method: "POST",
+          body: JSON.stringify({ rejectionReason }),
+        },
+      ),
+  };
+
+  // Campaign Management & Growth AI API
+  public campaigns = {
+    list: async (filters?: {
+      status?: string;
+      type?: string;
+      page?: number;
+      limit?: number;
+    }) => {
+      const params = new URLSearchParams();
+      if (filters?.status) params.set("status", filters.status);
+      if (filters?.type) params.set("type", filters.type);
+      if (filters?.page) params.set("page", String(filters.page));
+      if (filters?.limit) params.set("limit", String(filters.limit));
+      const queryStr = params.toString() ? `?${params.toString()}` : "";
+
+      return this.request<{
+        success: boolean;
+        items: CampaignDTO[];
+        total: number;
+        page: number;
+        totalPages: number;
+      }>(`/campaigns${queryStr}`);
+    },
+
+    get: (id: string) =>
+      this.request<{ success: boolean; data: CampaignDTO }>(`/campaigns/${id}`),
+
+    create: (dto: CreateCampaignDTO) =>
+      this.request<{ success: boolean; data: CampaignDTO }>("/campaigns", {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }),
+
+    update: (id: string, dto: UpdateCampaignDTO) =>
+      this.request<{ success: boolean; data: CampaignDTO }>(
+        `/campaigns/${id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(dto),
+        },
+      ),
+
+    delete: (id: string) =>
+      this.request<{
+        success: boolean;
+        data: { success: boolean; action: string };
+      }>(`/campaigns/${id}`, {
+        method: "DELETE",
+      }),
+
+    approveAi: (id: string) =>
+      this.request<{ success: boolean; data: CampaignDTO }>(
+        `/campaigns/${id}/approve-ai`,
+        {
+          method: "POST",
+        },
+      ),
+
+    execute: (id: string) =>
+      this.request<{
+        success: boolean;
+        data: {
+          targeted: number;
+          sent: number;
+          holdout: number;
+          deferredQuietHours: number;
+          suppressedFrequencyCap: number;
+          suppressedBudget: number;
+        };
+      }>(`/campaigns/${id}/execute`, {
+        method: "POST",
+      }),
+
+    generateAiCopy: (dto: GenerateCopyRequestDTO) =>
+      this.request<{ success: boolean; data: GenerateCopyResponseDTO }>(
+        "/campaigns/generate-copy",
+        {
+          method: "POST",
+          body: JSON.stringify(dto),
+        },
+      ),
+
+    calculateRfm: () =>
+      this.request<{ success: boolean; data: { processedCount: number } }>(
+        "/campaigns/calculate-rfm",
+        {
+          method: "POST",
+        },
+      ),
+
+    getMetrics: (id: string) =>
+      this.request<{ success: boolean; data: CampaignMetricDTO }>(
+        `/campaigns/${id}/metrics`,
+      ),
   };
 
   // Staff / User Management API
@@ -1471,6 +1753,255 @@ export class DaihApiClient {
       }),
   };
 
+  // PD Coin Loyalty & Rewards API
+  public loyalty = {
+    getMyWallet: (forceRefresh = false) => {
+      if (forceRefresh) {
+        apiCacheManager.invalidate("my_loyalty_wallet");
+      }
+      return apiCacheManager.fetchWithCache<LoyaltyWalletDTO>(
+        "my_loyalty_wallet",
+        () => this.request<LoyaltyWalletDTO>("/loyalty/me"),
+        forceRefresh ? 0 : 5000,
+        { forceRefresh },
+      );
+    },
+
+    invalidateWalletCache: () => {
+      apiCacheManager.invalidate("my_loyalty_wallet");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("daih:loyalty-updated"));
+      }
+    },
+
+    getMyHistory: (options?: {
+      page?: number;
+      limit?: number;
+      type?: string;
+    }) => {
+      const params = new URLSearchParams();
+      if (options?.page) params.set("page", String(options.page));
+      if (options?.limit) params.set("limit", String(options.limit));
+      if (options?.type) params.set("type", options.type);
+      const queryStr = params.toString() ? `?${params.toString()}` : "";
+
+      return this.request<LoyaltyLedgerListResponse>(
+        `/loyalty/me/history${queryStr}`,
+      );
+    },
+
+    getSettings: () =>
+      apiCacheManager.fetchWithCache<LoyaltySettingsRecord>(
+        "loyalty_settings",
+        () => this.request<LoyaltySettingsRecord>("/loyalty/settings"),
+        30000,
+      ),
+
+    updateSettings: async (dto: UpdateLoyaltySettingsDTO) => {
+      const res = await this.request<LoyaltySettingsRecord>(
+        "/loyalty/admin/settings",
+        {
+          method: "PUT",
+          body: JSON.stringify(dto),
+        },
+      );
+      apiCacheManager.invalidate("loyalty_settings");
+      return res;
+    },
+
+    getSettingsAuditHistory: () =>
+      this.request<LoyaltySettingsAuditDTO[]>(
+        "/loyalty/admin/settings/history",
+      ),
+
+    getAdminStats: () =>
+      this.request<AdminLoyaltyStatsDTO>("/loyalty/admin/stats"),
+
+    getAdminLedger: (options?: {
+      page?: number;
+      limit?: number;
+      type?: string;
+      search?: string;
+    }) => {
+      const params = new URLSearchParams();
+      if (options?.page) params.set("page", String(options.page));
+      if (options?.limit) params.set("limit", String(options.limit));
+      if (options?.type) params.set("type", options.type);
+      if (options?.search) params.set("search", options.search);
+      const queryStr = params.toString() ? `?${params.toString()}` : "";
+
+      return this.request<LoyaltyLedgerListResponse>(
+        `/loyalty/admin/ledger${queryStr}`,
+      );
+    },
+
+    getCustomerLoyalty: (customerId: string) =>
+      this.request<{
+        wallet: LoyaltyWalletDTO;
+        ledger: LoyaltyTransactionDTO[];
+      }>(`/loyalty/admin/customers/${customerId}`),
+
+    adminAdjustCoins: async (dto: AdminManualAdjustmentDTO) => {
+      const res = await this.request<{
+        success: boolean;
+        newBalance: number;
+        transactionId: string;
+      }>("/loyalty/admin/adjust", {
+        method: "POST",
+        body: JSON.stringify(dto),
+      });
+      apiCacheManager.invalidate("my_loyalty_wallet");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("daih:loyalty-updated"));
+      }
+      return res;
+    },
+
+    previewRedemption: (dto: RedemptionPreviewRequestDTO) =>
+      this.request<RedemptionPreviewResponseDTO>(
+        "/loyalty/preview-redemption",
+        {
+          method: "POST",
+          body: JSON.stringify(dto),
+        },
+      ),
+
+    applyRedemption: async (dto: RedemptionPreviewRequestDTO) => {
+      const res = await this.request<RedemptionPreviewResponseDTO>(
+        "/loyalty/apply-redemption",
+        {
+          method: "POST",
+          body: JSON.stringify(dto),
+        },
+      );
+      apiCacheManager.invalidate("my_loyalty_wallet");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("daih:loyalty-updated"));
+      }
+      return res;
+    },
+  };
+
+  /**
+   * Verified Customer Reviews & Testimonials API
+   */
+  readonly reviews = {
+    getFeatured: () =>
+      this.request<ReviewDTO[]>("/reviews/featured", {
+        headers: { "x-cache-ttl": "60" },
+      }),
+
+    getByResource: (resourceId: string, page = 1, limit = 20) =>
+      this.request<ResourceReviewsSummaryDTO>(
+        `/reviews/resource/${encodeURIComponent(resourceId)}?page=${page}&limit=${limit}`,
+        {
+          headers: { "x-cache-ttl": "30" },
+        },
+      ),
+
+    checkEligibility: (bookingId: string) =>
+      this.request<ReviewEligibilityDTO>(
+        `/reviews/eligibility/${encodeURIComponent(bookingId)}`,
+      ),
+
+    create: async (dto: CreateReviewDTO) => {
+      const res = await this.request<{ review: ReviewDTO; message: string }>(
+        "/reviews",
+        {
+          method: "POST",
+          body: JSON.stringify(dto),
+        },
+      );
+      apiCacheManager.invalidate("reviews");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("daih:review-created"));
+      }
+      return res;
+    },
+
+    update: async (id: string, dto: UpdateReviewDTO) => {
+      const res = await this.request<{ review: ReviewDTO; message: string }>(
+        `/reviews/${encodeURIComponent(id)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(dto),
+        },
+      );
+      apiCacheManager.invalidate("reviews");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("daih:review-updated"));
+      }
+      return res;
+    },
+
+    adminList: (filters: AdminReviewFilterDTO = {}) => {
+      const params = new URLSearchParams();
+      if (filters.status && filters.status !== "ALL")
+        params.append("status", filters.status);
+      if (filters.resourceId) params.append("resourceId", filters.resourceId);
+      if (filters.rating) params.append("rating", String(filters.rating));
+      if (filters.search) params.append("search", filters.search);
+      if (filters.page) params.append("page", String(filters.page));
+      if (filters.limit) params.append("limit", String(filters.limit));
+
+      const queryStr = params.toString() ? `?${params.toString()}` : "";
+      return this.request<{
+        reviews: ReviewDTO[];
+        pagination: {
+          page: number;
+          limit: number;
+          total: number;
+          totalPages: number;
+        };
+        kpis: {
+          averageRating: number;
+          totalReviews: number;
+          pendingCount: number;
+          featuredCount: number;
+        };
+      }>(`/reviews/admin${queryStr}`);
+    },
+
+    adminGetSettings: () =>
+      this.request<ReviewSettingDTO>("/reviews/admin/settings"),
+
+    adminUpdateSettings: async (dto: UpdateReviewSettingDTO) => {
+      const res = await this.request<ReviewSettingDTO>(
+        "/reviews/admin/settings",
+        {
+          method: "PATCH",
+          body: JSON.stringify(dto),
+        },
+      );
+      apiCacheManager.invalidate("reviews");
+      return res;
+    },
+
+    adminUpdateStatus: async (id: string, dto: UpdateReviewStatusDTO) => {
+      const res = await this.request<ReviewDTO>(
+        `/reviews/admin/${encodeURIComponent(id)}/status`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(dto),
+        },
+      );
+      apiCacheManager.invalidate("reviews");
+      return res;
+    },
+
+    adminReply: async (id: string, reply: string) => {
+      const res = await this.request<ReviewDTO>(
+        `/reviews/admin/${encodeURIComponent(id)}/reply`,
+        {
+          method: "POST",
+          body: JSON.stringify({ reply }),
+        },
+      );
+      apiCacheManager.invalidate("reviews");
+      return res;
+    },
+  };
+
   /**
    * Manually clear client-side API cache
    */
@@ -1480,3 +2011,4 @@ export class DaihApiClient {
 }
 
 export const api = new DaihApiClient();
+export const apiClient = api;

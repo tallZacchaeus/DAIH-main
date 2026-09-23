@@ -76,6 +76,16 @@ export const TEMPLATE_METADATA: Record<
       "bookingReference",
       "resourceName",
       "formattedDeparture",
+      "reviewUrl",
+    ],
+  },
+  booking_completed_review: {
+    description: "Post-session review request sent after booking completion",
+    variables: [
+      "customerName",
+      "bookingReference",
+      "resourceName",
+      "reviewUrl",
     ],
   },
   booking_reminder: {
@@ -124,6 +134,53 @@ export function interpolateTemplate(
   return result;
 }
 
+export const DEFAULT_SYSTEM_TEMPLATES: Record<
+  string,
+  { subject: string; htmlBody: string; textBody?: string }
+> = {
+  booking_completed_review: {
+    subject: "How was your session? Leave a Review — DAIH Hub",
+    textBody:
+      "Hello {{customerName}},\n\nThank you for choosing DAIH Hub! How was your session at {{resourceName}} (Ref: {{bookingReference}})? We'd love to hear your feedback.\n\nLeave your review here: {{reviewUrl}}\n\nBest regards,\nDAIH Workspace Team",
+    htmlBody: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>How was your session? Leave a Review — DAIH Hub</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 40px 20px;">
+  <div style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background-color: #23055c; padding: 28px 32px; text-align: center;">
+      <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 800;">How was your session?</h1>
+      <p style="color: #e2d9f3; margin: 8px 0 0 0; font-size: 14px;">Leave a Review &bull; DAIH Hub</p>
+    </div>
+    <div style="padding: 32px;">
+      <p style="color: #1e293b; font-size: 14px; line-height: 1.6; margin-top: 0;">Hello {{customerName}},</p>
+      <p style="color: #334155; font-size: 14px; line-height: 1.6;">
+        Thank you for spending your session with us at <strong>{{resourceName}}</strong> (Booking Ref: <code>{{bookingReference}}</code>). We hope everything was seamless, productive, and comfortable.
+      </p>
+      <div style="text-align: center; margin: 24px 0 8px 0;">
+        <span style="font-size: 26px; color: #f59e0b; letter-spacing: 4px;">&#9733;&#9733;&#9733;&#9733;&#9733;</span>
+      </div>
+      <p style="color: #334155; font-size: 14px; line-height: 1.6; text-align: center;">
+        Your feedback helps other members choose the best space and helps our team keep elevating the workspace experience.
+      </p>
+      <div style="margin: 28px 0; text-align: center;">
+        <a href="{{reviewUrl}}" style="background-color: #23055c; color: #ffffff; padding: 14px 32px; font-size: 14px; font-weight: 700; text-decoration: none; border-radius: 12px; display: inline-block;">
+          Leave a Review
+        </a>
+      </div>
+      <p style="color: #64748b; font-size: 12px; line-height: 1.5; text-align: center; margin-bottom: 0;">
+        Or copy and paste this link in your browser:<br>
+        <span style="color: #334155; word-break: break-all;">{{reviewUrl}}</span>
+      </p>
+    </div>
+  </div>
+</body>
+</html>`,
+  },
+};
+
 export class EmailTemplateService {
   private readonly CACHE_PREFIX = "email_template:";
   private readonly CACHE_TTL_SECONDS = 600; // 10 minutes
@@ -168,6 +225,34 @@ export class EmailTemplateService {
     });
 
     if (!dbTemplate) {
+      const fallback = DEFAULT_SYSTEM_TEMPLATES[type];
+      if (fallback) {
+        try {
+          const created = await prisma.emailTemplate.create({
+            data: {
+              type,
+              subject: fallback.subject,
+              htmlBody: fallback.htmlBody,
+              textBody: fallback.textBody,
+              isActive: true,
+            },
+          });
+          return {
+            subject: created.subject,
+            htmlBody: created.htmlBody,
+            textBody: created.textBody || undefined,
+            isActive: created.isActive,
+          };
+        } catch {
+          return {
+            subject: fallback.subject,
+            htmlBody: fallback.htmlBody,
+            textBody: fallback.textBody,
+            isActive: true,
+          };
+        }
+      }
+
       const error: any = new Error(
         `Email template '${type}' does not exist in the database. Please configure this template in Admin Console.`,
       );

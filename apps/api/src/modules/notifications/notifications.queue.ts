@@ -7,10 +7,19 @@ export type NotificationJobType =
   | "booking.rescheduled"
   | "booking.cancelled"
   | "booking.reminder"
+  | "booking.completed"
   | "access.checked_in"
   | "access.checked_out"
   | "payment.receipt"
-  | "payment.refund";
+  | "payment.refund"
+  | "finance.refund_requested"
+  | "finance.refund_info_provided"
+  | "operations.refund_info_requested"
+  | "operations.refund_rejected"
+  | "customer.refund_processed"
+  | "security.account_linked"
+  | "auth.mfa_otp"
+  | "campaign.broadcast";
 
 export interface NotificationJobData {
   jobType: NotificationJobType;

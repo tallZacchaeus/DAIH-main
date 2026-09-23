@@ -1,9 +1,32 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { api } from "@daih/api-client";
+import { SupportContactChannelsDTO } from "@daih/types";
 
 export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
+  const [contact, setContact] = useState<SupportContactChannelsDTO | null>(
+    null,
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+    api.support
+      .get()
+      .then((res) => {
+        if (isMounted && res?.contact) {
+          setContact(res.contact);
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not load contact details from API:", err?.message);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,25 +139,40 @@ export default function ContactPage() {
               <div className="padding40 bg-color text-light box-rounded">
                 <h3>DAIH</h3>
                 <address className="s1">
-                  <span>
-                    <i className="fa fa-map-marker fa-lg mr-2"></i> Abiona
-                    Street By House of Favour, Main Gate, Obafemi Owode LGA,
-                    Redemption City, Ogun State
-                  </span>
-                  <br />
-                  <span>
-                    <i className="fa fa-phone fa-lg mr-2"></i> 07042504389
-                  </span>
-                  <br />
-                  <span>
-                    <i className="fa fa-envelope-o fa-lg mr-2"></i>{" "}
-                    <a
-                      href="mailto:dareadeboyeinnovationhub@gmail.com"
-                      className="text-white"
-                    >
-                      dareadeboyeinnovationhub@gmail.com
-                    </a>
-                  </span>
+                  {contact?.address && (
+                    <>
+                      <span>
+                        <i className="fa fa-map-marker fa-lg mr-2"></i>{" "}
+                        {contact.address}
+                      </span>
+                      <br />
+                    </>
+                  )}
+                  {contact?.phone && (
+                    <>
+                      <span>
+                        <i className="fa fa-phone fa-lg mr-2"></i>{" "}
+                        <a
+                          href={`tel:${contact.phone.replace(/\s+/g, "")}`}
+                          className="text-white"
+                        >
+                          {contact.phone}
+                        </a>
+                      </span>
+                      <br />
+                    </>
+                  )}
+                  {contact?.email && (
+                    <span>
+                      <i className="fa fa-envelope-o fa-lg mr-2"></i>{" "}
+                      <a
+                        href={`mailto:${contact.email}`}
+                        className="text-white"
+                      >
+                        {contact.email}
+                      </a>
+                    </span>
+                  )}
                 </address>
               </div>
             </div>

@@ -74,7 +74,11 @@ export class PaystackClient {
     params: PaystackInitParams,
   ): Promise<PaystackInitResult> {
     // If mock key or test environment without real key, return deterministic mock
-    if (!this.secretKey || this.secretKey.includes("mock")) {
+    if (
+      !this.secretKey ||
+      this.secretKey.includes("mock") ||
+      config.env === "test"
+    ) {
       return {
         authorization_url: `https://checkout.paystack.com/mock-checkout-${params.reference}`,
         access_code: `mock_code_${params.reference}`,
@@ -134,7 +138,11 @@ export class PaystackClient {
   async verifyTransaction(
     reference: string,
   ): Promise<PaystackVerifyResult | null> {
-    if (!this.secretKey || this.secretKey.includes("mock")) {
+    if (
+      !this.secretKey ||
+      this.secretKey.includes("mock") ||
+      config.env === "test"
+    ) {
       // Mock response for test/mock environment
       return {
         status: true,
@@ -193,6 +201,80 @@ export class PaystackClient {
         `❌ Paystack verifyTransaction error for '${reference}':`,
         err.message,
       );
+      throw err;
+    }
+  }
+
+  /**
+   * Initiates a gateway refund with Paystack
+   */
+  async createRefund(params: {
+    transaction: string; // transaction reference or ID
+    amount?: number; // amount in kobo (optional: defaults to full refund)
+    customerNote?: string;
+    merchantNote?: string;
+  }): Promise<{
+    status: boolean;
+    message: string;
+    data: {
+      id: number | string;
+      status: string;
+      amount: number;
+      refund_reference?: string;
+    };
+  }> {
+    if (
+      !this.secretKey ||
+      this.secretKey.includes("mock") ||
+      config.env === "test"
+    ) {
+      return {
+        status: true,
+        message: "Refund has been processed successfully (mock)",
+        data: {
+          id: `ref_mock_${Date.now()}`,
+          status: "processed",
+          amount: params.amount || 100000,
+          refund_reference: `rref_${Date.now()}`,
+        },
+      };
+    }
+
+    try {
+      const body: Record<string, any> = {
+        transaction: params.transaction,
+      };
+      if (params.amount) {
+        body.amount = Math.round(params.amount);
+      }
+      if (params.customerNote) {
+        body.customer_note = params.customerNote;
+      }
+      if (params.merchantNote) {
+        body.merchant_note = params.merchantNote;
+      }
+
+      const response = await fetch(`${this.baseUrl}/refund`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.secretKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      const json: any = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          json?.message ||
+            `Paystack refund request failed with HTTP ${response.status}`,
+        );
+      }
+
+      return json;
+    } catch (err: any) {
+      console.error("❌ Paystack createRefund error:", err.message);
       throw err;
     }
   }

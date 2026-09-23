@@ -18,6 +18,7 @@ import {
 import { prisma } from "../../db/client.js";
 import { redis } from "../../config/redis.js";
 import { outboxService } from "../events/outbox.service.js";
+import { unescapeHtml } from "../../middleware/validate.middleware.js";
 
 export class CatalogueService {
   constructor(private repo: CatalogueRepository = catalogueRepository) {}
@@ -49,12 +50,21 @@ export class CatalogueService {
         monthlyRate = priceNum;
       return {
         ...p,
+        planName: p.planName ? unescapeHtml(p.planName) : p.planName,
         price: priceNum,
       };
     });
 
     return {
       ...resource,
+      name: resource.name ? unescapeHtml(resource.name) : resource.name,
+      description: resource.description
+        ? unescapeHtml(resource.description)
+        : resource.description,
+      location: resource.location
+        ? unescapeHtml(resource.location)
+        : resource.location,
+      amenities: (resource.amenities || []).map((a: string) => unescapeHtml(a)),
       pricing,
       blackouts:
         resource.blackouts?.map((b: any) => ({

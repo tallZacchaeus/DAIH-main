@@ -62,6 +62,9 @@ export const ActiveSubscriptionCard: React.FC<ActiveSubscriptionCardProps> = ({
     );
   }
 
+  const isBreakBadge = statusBadge === "On Break";
+  const isConfirmedBadge = statusBadge === "Confirmed";
+
   return (
     <div className="bg-white border border-purple-100/90 rounded-2xl shadow-sm p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:shadow-md hover:border-purple-200">
       <div className="space-y-1.5">
@@ -69,10 +72,16 @@ export const ActiveSubscriptionCard: React.FC<ActiveSubscriptionCardProps> = ({
           <h4 className="text-xl sm:text-2xl font-extrabold text-[#181c20] tracking-tight">
             {planName}
           </h4>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            {statusBadge}
-          </span>
+          <span
+            className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+              isBreakBadge
+                ? "bg-amber-500 ring-4 ring-amber-100"
+                : isConfirmedBadge
+                  ? "bg-purple-500 ring-4 ring-purple-100"
+                  : "bg-emerald-500 ring-4 ring-emerald-100 animate-pulse"
+            }`}
+            title={statusBadge}
+          />
         </div>
         {billingCycle && (
           <p className="text-xs text-slate-500 font-medium">{billingCycle}</p>

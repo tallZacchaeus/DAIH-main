@@ -31,7 +31,11 @@ export interface FinanceTransaction {
   resourcePlan: string;
   amount: string;
   rawAmount: number;
-  status: "Paid" | "Pending" | "Failed";
+  status: "Paid" | "Pending" | "Failed" | "Refunded";
+  refundAmount?: string;
+  rawRefundAmount?: number;
+  refundReason?: string;
+  refundedAt?: string;
 }
 
 interface TransactionLedgerTableProps {
@@ -73,7 +77,7 @@ export const TransactionLedgerTable: React.FC<TransactionLedgerTableProps> = ({
         page: currentPage,
         limit: pageSize,
         search: searchQuery || undefined,
-        status: statusFilter !== "ALL" ? statusFilter : undefined,
+        status: statusFilter !== "ALL" ? (statusFilter as any) : undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
       });
@@ -83,15 +87,33 @@ export const TransactionLedgerTable: React.FC<TransactionLedgerTableProps> = ({
 
       const mapped: FinanceTransaction[] = txList.map((tx: any) => {
         let status: FinanceTransaction["status"] = "Pending";
-        if (tx.status === PaymentStatus.SUCCESSFUL || tx.status === "SUCCESS")
+        const isRefunded =
+          tx.status === PaymentStatus.REFUNDED ||
+          tx.status === PaymentStatus.PARTIALLY_REFUNDED ||
+          (tx.refundAmount != null && Number(tx.refundAmount) > 0);
+
+        if (isRefunded) {
+          status = "Refunded";
+        } else if (
+          tx.status === PaymentStatus.SUCCESSFUL ||
+          tx.status === "SUCCESS"
+        ) {
           status = "Paid";
-        else if (tx.status === PaymentStatus.FAILED) status = "Failed";
+        } else if (tx.status === PaymentStatus.FAILED) {
+          status = "Failed";
+        }
 
         const userName =
           tx.customerName ||
+          (tx.user
+            ? `${tx.user.firstName || ""} ${tx.user.lastName || ""}`.trim() ||
+              tx.user.email
+            : null) ||
           tx.booking?.customerName ||
-          tx.booking?.resourceName ||
+          tx.booking?.resource?.name ||
           "Workspace Client";
+
+        const refundAmt = Number(tx.refundAmount || 0);
 
         return {
           id: tx.id,
@@ -107,10 +129,13 @@ export const TransactionLedgerTable: React.FC<TransactionLedgerTableProps> = ({
             : tx.method
               ? `Method: ${tx.method}`
               : "Paystack",
-          avatarColorClass: "bg-[#23055c] text-white",
+          avatarColorClass: isRefunded
+            ? "bg-rose-600 text-white"
+            : "bg-[#23055c] text-white",
           avatarLetter: (userName.charAt(0) || "M").toUpperCase(),
           resourcePlan:
             tx.resourceName ||
+            tx.booking?.resource?.name ||
             tx.booking?.resourceName ||
             "Workspace Reservation",
           amount: `₦${Number(tx.amount || 0).toLocaleString("en-NG", {
@@ -119,6 +144,22 @@ export const TransactionLedgerTable: React.FC<TransactionLedgerTableProps> = ({
           })}`,
           rawAmount: Number(tx.amount || 0),
           status,
+          refundAmount:
+            refundAmt > 0
+              ? `₦${refundAmt.toLocaleString("en-NG", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}`
+              : undefined,
+          rawRefundAmount: refundAmt,
+          refundReason: tx.refundReason || undefined,
+          refundedAt: tx.refundedAt
+            ? new Date(tx.refundedAt).toLocaleDateString("en-NG", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })
+            : undefined,
         };
       });
 
@@ -148,6 +189,13 @@ export const TransactionLedgerTable: React.FC<TransactionLedgerTableProps> = ({
           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/80">
             <CheckCircle2 className="w-3 h-3" />
             Paid
+          </span>
+        );
+      case "Refunded":
+        return (
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200/80">
+            <RotateCw className="w-3 h-3" />
+            Refunded
           </span>
         );
       case "Pending":
@@ -207,7 +255,7 @@ export const TransactionLedgerTable: React.FC<TransactionLedgerTableProps> = ({
 
             {filterOpen && (
               <div className="absolute top-full left-0 mt-1 w-36 bg-white rounded-xl shadow-lg border border-[#EBE7F5] py-1 z-20">
-                {["ALL", "PAID", "PENDING", "FAILED"].map((st) => (
+                {["ALL", "PAID", "REFUNDED", "PENDING", "FAILED"].map((st) => (
                   <button
                     key={st}
                     onClick={() => {
@@ -325,8 +373,17 @@ export const TransactionLedgerTable: React.FC<TransactionLedgerTableProps> = ({
                   <td className="py-4 px-6 text-slate-600 font-medium">
                     {tx.resourcePlan}
                   </td>
-                  <td className="py-4 px-6 text-slate-900 font-extrabold text-right">
-                    {tx.amount}
+                  <td className="py-4 px-6 text-right">
+                    <div
+                      className={`font-extrabold ${tx.status === "Refunded" ? "text-rose-700" : "text-slate-900"}`}
+                    >
+                      {tx.amount}
+                    </div>
+                    {tx.refundAmount && (
+                      <div className="text-[10px] text-rose-600 font-bold">
+                        -{tx.refundAmount} refunded
+                      </div>
+                    )}
                   </td>
                   <td className="py-4 px-6 text-center">
                     {getStatusBadge(tx.status)}
@@ -441,20 +498,35 @@ export const TransactionLedgerTable: React.FC<TransactionLedgerTableProps> = ({
                 </span>
                 <div>{getStatusBadge(selectedTx.status)}</div>
               </div>
+
+              {/* Refund Metadata if Refunded */}
+              {selectedTx.refundAmount && (
+                <div className="p-3 bg-rose-50/70 rounded-xl border border-rose-100 space-y-1.5">
+                  <div className="flex justify-between font-bold text-rose-700">
+                    <span>Refund Disbursed:</span>
+                    <span>-{selectedTx.refundAmount}</span>
+                  </div>
+                  {selectedTx.refundReason && (
+                    <div className="flex justify-between text-[11px] text-slate-600">
+                      <span className="text-slate-400">Reason:</span>
+                      <span className="font-medium text-slate-800 text-right truncate max-w-[200px]">
+                        {selectedTx.refundReason}
+                      </span>
+                    </div>
+                  )}
+                  {selectedTx.refundedAt && (
+                    <div className="flex justify-between text-[11px] text-slate-600">
+                      <span className="text-slate-400">Refunded On:</span>
+                      <span>{selectedTx.refundedAt}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex justify-between pt-2 border-t border-slate-100 text-sm font-extrabold">
                 <span className="text-slate-800">Total Settled:</span>
                 <span className="text-[#23055c]">{selectedTx.amount}</span>
               </div>
-            </div>
-
-            {/* No-Refund Policy Notice */}
-            <div className="mb-4 p-3 bg-purple-50/60 rounded-xl border border-purple-100 flex items-center gap-2.5 text-xs text-purple-900 font-medium">
-              <ShieldCheck className="w-4 h-4 text-[#23055c] shrink-0" />
-              <span>
-                DAIH operates a strict <strong>No-Refund Policy</strong>.
-                Unredeemed No-Show sessions can be rescheduled by Operations
-                Admins.
-              </span>
             </div>
 
             <div className="flex gap-2 justify-end">

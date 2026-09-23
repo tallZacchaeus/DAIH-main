@@ -211,3 +211,41 @@ export const mfaVerifyChallengeSchema = z.object({
 export const mfaResendOtpSchema = z.object({
   mfaChallengeToken: z.string().min(1, "MFA challenge token is required"),
 });
+
+export const profileMfaInitiateSchema = z.object({
+  method: z.enum(["EMAIL_OTP", "TOTP"], {
+    errorMap: () => ({ message: "Method must be either EMAIL_OTP or TOTP" }),
+  }),
+});
+
+export const profileMfaConfirmSchema = z.object({
+  method: z.enum(["EMAIL_OTP", "TOTP"], {
+    errorMap: () => ({ message: "Method must be either EMAIL_OTP or TOTP" }),
+  }),
+  code: z
+    .string()
+    .min(6, "Verification code must be at least 6 characters")
+    .max(8)
+    .transform(sanitizeString),
+  ephemeralSecret: z.string().optional(),
+});
+
+// ─── Google Auth & Onboarding Schemas ──────────────────────────────────────────
+
+export const googleAuthSchema = z.object({
+  idToken: z.string().trim().min(1, "Google ID token is required"),
+  referralCode: z.string().trim().max(50).optional().or(z.literal("")),
+  portal: z.enum(["customer", "admin"]).optional(),
+});
+
+export const onboardingAttributionSchema = z.object({
+  source: z.string().trim().max(50).optional(),
+  referralCode: z.string().trim().max(50).optional().or(z.literal("")),
+});
+
+export const policyConsentSchema = z.object({
+  policyVersion: z.string().trim().default("1.0"),
+  consented: z.boolean().refine((val) => val === true, {
+    message: "You must accept the terms of service and privacy policy",
+  }),
+});

@@ -8,11 +8,12 @@ import {
 import { redis } from "../../config/redis.js";
 
 const DEFAULT_CONTACT: SupportContactChannelsDTO = {
-  phone: "+234 800 000 3244",
-  whatsapp: "+234 812 345 6789",
+  phone: "+234 7042504389",
+  whatsapp: "+234 7042504389",
   email: "support@daih.com",
-  address: "Dominion Allianze Innovation Hub (DAIH), Lagos, Nigeria",
-  operatingHours: "Mon - Sat: 8:00 AM – 8:00 PM, Sun: Closed (Maintenance)",
+  address:
+    "Dare Adeboye Innovation Hub By House of Favour, Main Gate, Abiona Street, Redemption City, Ogun State, Nigeria",
+  operatingHours: "Mon - Sat: 8:00 AM – 6:00 PM, Sun: Closed",
 };
 
 const DEFAULT_FAQS: FAQItemDTO[] = [

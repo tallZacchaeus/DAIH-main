@@ -15,8 +15,9 @@ import { identityRepository } from "./identity.repository.js";
 import { passwordService } from "./password.service.js";
 import { clientIdService } from "./client-id.service.js";
 import { sessionService } from "./session.service.js";
-import { emailService } from "../email/email.service.js";
 import { mfaService } from "./mfa.service.js";
+import { OAuth2Client } from "google-auth-library";
+import { enqueueNotification } from "../notifications/notifications.queue.js";
 import {
   RegisterDTO,
   LoginDTO,
@@ -27,6 +28,12 @@ import {
   UserSummaryDTO,
   SessionContext,
   SetupAccountResult,
+  GoogleAuthServiceDTO,
+  GoogleAuthServiceResult,
+  GoogleOAuthInitResult,
+  GoogleOAuthCallbackDTO,
+  GoogleOAuthCallbackResult,
+  OnboardingAttributionDTO,
 } from "./identity.types.js";
 
 /** Roles that must complete MFA before accessing the system */
@@ -56,7 +63,598 @@ export function generateReferralCode(): string {
   return code;
 }
 
+const googleClient = new OAuth2Client(config.google.clientId);
+
 export class IdentityService {
+  formatUserSummary(user: any): UserSummaryDTO {
+    const hasGoogle = Boolean(
+      (user.identities &&
+        user.identities.some((i: any) => i.provider === "GOOGLE")) ||
+      user.googleId,
+    );
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      phoneNumber: user.phoneNumber,
+      avatarUrl: user.avatarUrl || null,
+      birthday: user.birthday || null,
+      clientId: user.clientId,
+      role: user.role as UserRole,
+      isVerified: user.isVerified,
+      onboardingCompleted: user.onboardingCompleted ?? true,
+      createdAt: user.createdAt,
+      referralCode: user.referralCode || null,
+      hasPassword: Boolean(user.passwordHash),
+      hasReferrer: Boolean(user.referredById),
+      acquisitionSource: user.acquisitionSource || null,
+      googleId: user.googleId || null,
+      hasGoogleLinked: hasGoogle,
+      mfaEnabled: Boolean(user.mfaEnabled),
+      mfaMethod: (user.mfaMethod as any) || null,
+    };
+  }
+
+  /**
+   * Authenticates a customer with a Google ID token.
+   * Enforces email_verified, stable googleId lookup, verified email linking, portal checks, and race-safe user creation.
+   */
+  async authenticateGoogle(
+    dto: GoogleAuthServiceDTO,
+    context: SessionContext = {},
+  ): Promise<GoogleAuthServiceResult> {
+    // 1. Verify Google ID token
+    let payload: any;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: dto.idToken,
+        audience: config.google.clientId,
+      });
+      payload = ticket.getPayload();
+    } catch (err: any) {
+      const error: any = new Error("Invalid or expired Google token");
+      error.code = "INVALID_GOOGLE_TOKEN";
+      error.statusCode = 401;
+      throw error;
+    }
+
+    if (!payload || !payload.sub || !payload.email) {
+      const error: any = new Error(
+        "Google token does not contain required profile claims",
+      );
+      error.code = "INVALID_GOOGLE_TOKEN";
+      error.statusCode = 401;
+      throw error;
+    }
+
+    // 2. Strict email_verified check
+    if (!payload.email_verified) {
+      const error: any = new Error(
+        "Your Google email address must be verified to sign in",
+      );
+      error.code = "GOOGLE_EMAIL_NOT_VERIFIED";
+      error.statusCode = 401;
+      throw error;
+    }
+
+    const googleId = payload.sub;
+    const email = payload.email.toLowerCase();
+
+    // 3. Lookup by googleId first, fallback to verified email
+    let user = await identityRepository.findByGoogleId(googleId);
+    let isNewUser = false;
+
+    if (!user) {
+      const existingByEmail = await identityRepository.findByEmail(email);
+
+      if (existingByEmail) {
+        user = existingByEmail;
+
+        // 4. Portal boundary check BEFORE any linking or side-effects!
+        const requestedPortal = (
+          dto.portal ||
+          context.portal ||
+          ""
+        ).toLowerCase();
+        if (requestedPortal === "customer" && user.role !== UserRole.CUSTOMER) {
+          const error: any = new Error(
+            "Access Denied: Staff and Administrator accounts cannot sign in through the customer portal.",
+          );
+          error.code = "STAFF_NOT_ALLOWED_ON_CUSTOMER_PORTAL";
+          error.statusCode = 403;
+          throw error;
+        }
+        if (requestedPortal === "admin" && user.role === UserRole.CUSTOMER) {
+          const error: any = new Error(
+            "Access Denied: Customer accounts cannot access the Staff & Admin Console.",
+          );
+          error.code = "CUSTOMER_NOT_ALLOWED_ON_ADMIN_PORTAL";
+          error.statusCode = 403;
+          throw error;
+        }
+
+        // Pre-hijacking defense: if existing user was registered via unverified password,
+        // clear passwordHash and revoke active sessions before linking
+        if (!existingByEmail.isVerified) {
+          user = await identityRepository.clearPasswordAndRevokeSessions(
+            existingByEmail.id,
+          );
+        }
+
+        // Link account only if not already linked
+        const existingIdentity = await identityRepository.findIdentity(
+          "GOOGLE",
+          googleId,
+        );
+        if (!existingIdentity) {
+          user = await identityRepository.linkGoogleAccount(
+            user.id,
+            googleId,
+            email,
+          );
+
+          // Enqueue security notification email via BullMQ
+          try {
+            await enqueueNotification(
+              "security.account_linked",
+              user.email,
+              user.firstName,
+              { provider: "Google" },
+            );
+          } catch (err: any) {
+            console.warn(
+              "Deferred account-linked security notification error:",
+              err?.message,
+            );
+          }
+        }
+      } else {
+        // 5. User does not exist -> Create new customer (portal check: new Google accounts are always CUSTOMER)
+        const requestedPortal = (
+          dto.portal ||
+          context.portal ||
+          ""
+        ).toLowerCase();
+        if (requestedPortal === "admin") {
+          const error: any = new Error(
+            "Access Denied: Customer accounts cannot access the Staff & Admin Console.",
+          );
+          error.code = "CUSTOMER_NOT_ALLOWED_ON_ADMIN_PORTAL";
+          error.statusCode = 403;
+          throw error;
+        }
+
+        isNewUser = true;
+
+        // Resolve optional referral code
+        let referredById: string | undefined = undefined;
+        if (dto.referralCode && dto.referralCode.trim()) {
+          const cleanRef = dto.referralCode.trim().toUpperCase();
+          const referrer =
+            await identityRepository.findByReferralCode(cleanRef);
+          if (referrer) {
+            referredById = referrer.id;
+          }
+        }
+
+        // Generate clientId and user referral code
+        const clientId = await clientIdService.generateNextClientId();
+        let referralCode = generateReferralCode();
+        let collision =
+          await identityRepository.findByReferralCode(referralCode);
+        while (collision) {
+          referralCode = generateReferralCode();
+          collision = await identityRepository.findByReferralCode(referralCode);
+        }
+
+        const firstName = payload.given_name || payload.name || "Customer";
+        const lastName = payload.family_name || "";
+        const avatarUrl = payload.picture || null;
+        // If code resolves to an existing referrer: onboardingCompleted = true
+        // If absent or invalid (typo): onboardingCompleted = false (user gets chance on /onboarding)
+        const onboardingCompleted = Boolean(referredById);
+
+        try {
+          user = await identityRepository.createGoogleCustomer({
+            providerUserId: googleId,
+            email,
+            firstName,
+            lastName,
+            clientId,
+            avatarUrl,
+            referralCode,
+            referredById,
+            onboardingCompleted,
+          });
+        } catch (err: any) {
+          // Race condition check: Prisma unique constraint violation (P2002)
+          if (err.code === "P2002") {
+            user = await identityRepository.findByGoogleId(googleId);
+            if (!user) {
+              user = await identityRepository.findByEmail(email);
+            }
+            if (!user) {
+              throw err;
+            }
+            isNewUser = false;
+          } else {
+            throw err;
+          }
+        }
+      }
+    } else {
+      // User found by googleId -> check portal boundary
+      const requestedPortal = (
+        dto.portal ||
+        context.portal ||
+        ""
+      ).toLowerCase();
+      if (requestedPortal === "customer" && user.role !== UserRole.CUSTOMER) {
+        const error: any = new Error(
+          "Access Denied: Staff and Administrator accounts cannot sign in through the customer portal.",
+        );
+        error.code = "STAFF_NOT_ALLOWED_ON_CUSTOMER_PORTAL";
+        error.statusCode = 403;
+        throw error;
+      }
+      if (requestedPortal === "admin" && user.role === UserRole.CUSTOMER) {
+        const error: any = new Error(
+          "Access Denied: Customer accounts cannot access the Staff & Admin Console.",
+        );
+        error.code = "CUSTOMER_NOT_ALLOWED_ON_ADMIN_PORTAL";
+        error.statusCode = 403;
+        throw error;
+      }
+    }
+
+    const userSummary = this.formatUserSummary(user);
+
+    // Check NDPR policy consent
+    const consent = await prisma.policyConsent.findFirst({
+      where: { userId: user.id, policyVersion: "1.0" },
+    });
+    const needsConsent = !consent;
+
+    // Issue session
+    const { accessToken, rawRefreshToken } = await sessionService.createSession(
+      userSummary,
+      context,
+    );
+
+    return {
+      accessToken,
+      rawRefreshToken,
+      user: userSummary,
+      isNewUser,
+      needsOnboarding: !user.onboardingCompleted,
+      needsConsent,
+    };
+  }
+
+  /**
+   * Generates Google OAuth URL with PKCE (code_verifier and code_challenge S256)
+   * and an HMAC-signed state cookie preserving referral code and destination.
+   */
+  generateGoogleOAuthUrl(options: {
+    referralCode?: string;
+    destination?: string;
+    portal?: string;
+  }): GoogleOAuthInitResult {
+    const codeVerifier = crypto.randomBytes(32).toString("base64url");
+    const codeChallenge = crypto
+      .createHash("sha256")
+      .update(codeVerifier)
+      .digest("base64url");
+
+    const nonce = crypto.randomBytes(16).toString("hex");
+    const statePayload = {
+      nonce,
+      ref: options.referralCode
+        ? options.referralCode.trim().toUpperCase()
+        : undefined,
+      destination: options.destination || "/dashboard",
+      portal: options.portal || "customer",
+      iat: Date.now(),
+    };
+
+    const encodedPayload = Buffer.from(JSON.stringify(statePayload)).toString(
+      "base64url",
+    );
+    const signature = crypto
+      .createHmac("sha256", config.jwt.secret)
+      .update(encodedPayload)
+      .digest("base64url");
+    const state = `${encodedPayload}.${signature}`;
+
+    const cookieData = Buffer.from(
+      JSON.stringify({
+        state,
+        codeVerifier,
+        destination: statePayload.destination,
+        portal: statePayload.portal,
+        ref: statePayload.ref,
+      }),
+    ).toString("base64url");
+    const cookieSig = crypto
+      .createHmac("sha256", config.jwt.secret)
+      .update(cookieData)
+      .digest("base64url");
+    const cookieValue = `${cookieData}.${cookieSig}`;
+
+    const params = new URLSearchParams({
+      client_id: config.google.clientId,
+      redirect_uri: config.google.redirectUri,
+      response_type: "code",
+      scope: "openid email profile",
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256",
+      state,
+      access_type: "offline",
+      prompt: "select_account",
+    });
+
+    return {
+      url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
+      stateCookie: {
+        name: "daih_oauth_state",
+        value: cookieValue,
+        maxAge: 10 * 60 * 1000,
+      },
+    };
+  }
+
+  /**
+   * Validates Google OAuth callback with PKCE, exchanges code for tokens,
+   * performs anti-pre-hijacking account linking, checks NDPR consent, and issues session.
+   */
+  async handleGoogleOAuthCallback(
+    dto: GoogleOAuthCallbackDTO,
+    context: SessionContext = {},
+  ): Promise<GoogleOAuthCallbackResult> {
+    if (!dto.state || !dto.code) {
+      const error: any = new Error("Missing OAuth state or authorization code");
+      error.code = "INVALID_OAUTH_PARAMS";
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!dto.stateCookie) {
+      const error: any = new Error(
+        "OAuth session cookie is missing or expired",
+      );
+      error.code = "OAUTH_SESSION_EXPIRED";
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const [cookieData, cookieSig] = dto.stateCookie.split(".");
+    if (!cookieData || !cookieSig) {
+      const error: any = new Error("Invalid OAuth cookie format");
+      error.code = "INVALID_OAUTH_COOKIE";
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const expectedCookieSig = crypto
+      .createHmac("sha256", config.jwt.secret)
+      .update(cookieData)
+      .digest("base64url");
+    if (cookieSig !== expectedCookieSig) {
+      const error: any = new Error("OAuth cookie tampering detected");
+      error.code = "INVALID_OAUTH_COOKIE";
+      error.statusCode = 400;
+      throw error;
+    }
+
+    let parsedCookie: any;
+    try {
+      parsedCookie = JSON.parse(
+        Buffer.from(cookieData, "base64url").toString("utf-8"),
+      );
+    } catch {
+      const error: any = new Error("Invalid OAuth cookie payload");
+      error.code = "INVALID_OAUTH_COOKIE";
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (parsedCookie.state !== dto.state) {
+      const error: any = new Error("OAuth state mismatch");
+      error.code = "OAUTH_STATE_MISMATCH";
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const [payloadB64, sig] = dto.state.split(".");
+    if (!payloadB64 || !sig) {
+      const error: any = new Error("Invalid state format");
+      error.code = "INVALID_OAUTH_STATE";
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const expectedSig = crypto
+      .createHmac("sha256", config.jwt.secret)
+      .update(payloadB64)
+      .digest("base64url");
+    if (sig !== expectedSig) {
+      const error: any = new Error("OAuth state tampering detected");
+      error.code = "INVALID_OAUTH_STATE";
+      error.statusCode = 400;
+      throw error;
+    }
+
+    let statePayload: any;
+    try {
+      statePayload = JSON.parse(
+        Buffer.from(payloadB64, "base64url").toString("utf-8"),
+      );
+    } catch {
+      const error: any = new Error("Invalid state payload");
+      error.code = "INVALID_OAUTH_STATE";
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (Date.now() - statePayload.iat > 10 * 60 * 1000) {
+      const error: any = new Error(
+        "OAuth state has expired. Please try signing in again.",
+      );
+      error.code = "OAUTH_STATE_EXPIRED";
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Exchange authorization code for tokens
+    const oauth2Client = new OAuth2Client(
+      config.google.clientId,
+      config.google.clientSecret,
+      config.google.redirectUri,
+    );
+
+    let idToken: string;
+    try {
+      const { tokens } = await oauth2Client.getToken({
+        code: dto.code,
+        codeVerifier: parsedCookie.codeVerifier,
+      });
+      if (!tokens.id_token) {
+        throw new Error("Missing id_token in Google token response");
+      }
+      idToken = tokens.id_token;
+    } catch (err: any) {
+      const error: any = new Error(
+        "Failed to exchange authorization code with Google: " +
+          (err.message || err),
+      );
+      error.code = "OAUTH_EXCHANGE_FAILED";
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const authResult = await this.authenticateGoogle(
+      {
+        idToken,
+        referralCode: statePayload.ref,
+        portal: statePayload.portal,
+      },
+      context,
+    );
+
+    return {
+      accessToken: authResult.accessToken,
+      rawRefreshToken: authResult.rawRefreshToken,
+      user: authResult.user,
+      isNewUser: authResult.isNewUser,
+      needsConsent: Boolean(authResult.needsConsent),
+      destination: statePayload.destination || "/dashboard",
+    };
+  }
+
+  /**
+   * Captures NDPR Policy Consent for an authenticated user and logs outbox event.
+   */
+  async capturePolicyConsent(
+    userId: string,
+    dto: { policyVersion: string; consented: boolean },
+  ): Promise<UserSummaryDTO> {
+    if (!dto.consented) {
+      const error: any = new Error(
+        "You must accept the terms and privacy policy to continue.",
+      );
+      error.code = "CONSENT_REQUIRED";
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const user = await identityRepository.findById(userId);
+    if (!user) {
+      const error: any = new Error("User not found");
+      error.code = "USER_NOT_FOUND";
+      error.statusCode = 404;
+      throw error;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.policyConsent.create({
+        data: {
+          userId,
+          policyVersion: dto.policyVersion || "1.0",
+          purpose: "NDPR_TERMS_AND_PRIVACY",
+        },
+      });
+
+      await tx.outboxEvent.create({
+        data: {
+          eventType: "identity.policy_consent_captured",
+          aggregateType: "PolicyConsent",
+          aggregateId: userId,
+          payload: {
+            userId,
+            policyVersion: dto.policyVersion || "1.0",
+            consentedAt: new Date().toISOString(),
+          },
+        },
+      });
+    });
+
+    return this.formatUserSummary(user);
+  }
+
+  /**
+   * Submits post-signup onboarding attribution and optional referral code.
+   * Strictly locks once onboarding is completed (or skipped).
+   */
+  async submitOnboardingAttribution(
+    userId: string,
+    dto: OnboardingAttributionDTO,
+  ): Promise<UserSummaryDTO> {
+    const user = await identityRepository.findById(userId);
+    if (!user) {
+      const error: any = new Error("User not found");
+      error.code = "USER_NOT_FOUND";
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // 1. AIRTIGHT LOCK: If onboarding is already completed or skipped, silently return profile
+    if (user.onboardingCompleted) {
+      return this.formatUserSummary(user);
+    }
+
+    let referredById = user.referredById;
+
+    // 2. Resolve optional referral code
+    if (dto.referralCode && dto.referralCode.trim() && !referredById) {
+      const cleanCode = dto.referralCode.trim().toUpperCase();
+      const referrer = await identityRepository.findByReferralCode(cleanCode);
+
+      // Anti-self and anti-cyclic referral check ($A -> B -> A)
+      if (
+        referrer &&
+        referrer.id !== userId &&
+        referrer.referredById !== userId
+      ) {
+        referredById = referrer.id;
+      }
+    }
+
+    // 3. Mark onboardingCompleted: true permanently and store acquisitionSource if provided
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        referredById,
+        onboardingCompleted: true,
+        ...(dto.source && dto.source.trim()
+          ? { acquisitionSource: dto.source.trim() }
+          : {}),
+      },
+    });
+
+    return this.formatUserSummary(updated);
+  }
+
   /**
    * Registers a new customer account
    */
@@ -110,20 +708,6 @@ export class IdentityService {
       referralCode,
       referredById,
     });
-
-    // Send verification email directly as well for prompt UX
-    try {
-      await emailService.sendVerificationEmail(
-        user.email,
-        user.firstName,
-        rawVerificationToken,
-      );
-    } catch (err: any) {
-      console.warn(
-        "Direct verification email send deferred to background outbox:",
-        err?.message,
-      );
-    }
 
     const userSummary: UserSummaryDTO = {
       id: user.id,
@@ -199,19 +783,6 @@ export class IdentityService {
         user.email,
         user.firstName,
       );
-
-      try {
-        await emailService.sendVerificationEmail(
-          user.email,
-          user.firstName,
-          rawToken,
-        );
-      } catch (err: any) {
-        console.warn(
-          "Direct resend verification email deferred to background outbox:",
-          err?.message,
-        );
-      }
     }
 
     return {
@@ -331,17 +902,11 @@ export class IdentityService {
       );
 
       if (user.mfaMethod === "EMAIL_OTP") {
-        // Generate and email the OTP code
+        // Enqueue OTP delivery to background worker queue
         const rawCode = await mfaService.generateEmailOtp(user.id);
-        try {
-          await emailService.sendMfaOtpEmail(
-            user.email,
-            user.firstName,
-            rawCode,
-          );
-        } catch (err: any) {
-          console.warn("[MFA] OTP email send failed:", err?.message);
-        }
+        await enqueueNotification("auth.mfa_otp", user.email, user.firstName, {
+          rawCode,
+        });
 
         const result: MfaChallengeResult = {
           requiresMfa: true,
@@ -493,11 +1058,9 @@ export class IdentityService {
 
     if (method === "EMAIL_OTP") {
       const rawCode = await mfaService.generateEmailOtp(user.id);
-      try {
-        await emailService.sendMfaOtpEmail(user.email, user.firstName, rawCode);
-      } catch (err: any) {
-        console.warn("[MFA] Setup OTP email send failed:", err?.message);
-      }
+      await enqueueNotification("auth.mfa_otp", user.email, user.firstName, {
+        rawCode,
+      });
       return { method: "EMAIL_OTP" };
     }
 
@@ -651,7 +1214,122 @@ export class IdentityService {
     }
 
     const rawCode = await mfaService.generateEmailOtp(user.id);
-    await emailService.sendMfaOtpEmail(user.email, user.firstName, rawCode);
+    await enqueueNotification("auth.mfa_otp", user.email, user.firstName, {
+      rawCode,
+    });
+  }
+
+  /**
+   * Initiates changing or setting up MFA for an authenticated user.
+   */
+  async initiateProfileMfa(
+    userId: string,
+    method: "EMAIL_OTP" | "TOTP",
+  ): Promise<{
+    method: "EMAIL_OTP" | "TOTP";
+    qrCodeDataUri?: string;
+    manualEntryKey?: string;
+    ephemeralSecret?: string;
+    message?: string;
+  }> {
+    const user = await identityRepository.findById(userId);
+    if (!user) {
+      const error: any = new Error("User not found");
+      error.code = "USER_NOT_FOUND";
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (method === "EMAIL_OTP") {
+      const rawCode = await mfaService.generateEmailOtp(user.id);
+      await enqueueNotification("auth.mfa_otp", user.email, user.firstName, {
+        rawCode,
+      });
+      return {
+        method: "EMAIL_OTP",
+        message: `Verification code dispatched to ${user.email}`,
+      };
+    }
+
+    // TOTP setup
+    const { secret, qrCodeDataUri, manualEntryKey } =
+      await mfaService.generateTotpSetup(user.email);
+
+    return {
+      method: "TOTP",
+      qrCodeDataUri,
+      manualEntryKey,
+      ephemeralSecret: secret,
+    };
+  }
+
+  /**
+   * Confirms and persists the new preferred MFA method for an authenticated user.
+   */
+  async confirmProfileMfa(
+    userId: string,
+    method: "EMAIL_OTP" | "TOTP",
+    code: string,
+    ephemeralSecret?: string,
+  ): Promise<{
+    user: UserSummaryDTO;
+    method: "EMAIL_OTP" | "TOTP";
+  }> {
+    const user = await identityRepository.findById(userId);
+    if (!user) {
+      const error: any = new Error("User not found");
+      error.code = "USER_NOT_FOUND";
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (method === "EMAIL_OTP") {
+      const isValid = await mfaService.verifyEmailOtp(userId, code);
+      if (!isValid) {
+        const error: any = new Error(
+          "Invalid or expired verification code. Please request a new one.",
+        );
+        error.code = "MFA_CODE_INVALID";
+        error.statusCode = 400;
+        throw error;
+      }
+      await mfaService.enableEmailOtpMfa(userId);
+    } else if (method === "TOTP") {
+      if (!ephemeralSecret) {
+        const error: any = new Error(
+          "MFA secret is required for TOTP verification.",
+        );
+        error.code = "MFA_SECRET_REQUIRED";
+        error.statusCode = 400;
+        throw error;
+      }
+      const isValid = mfaService.verifyTotpCode(ephemeralSecret, code);
+      if (!isValid) {
+        const error: any = new Error(
+          "Invalid authenticator code. Check that your device time is synchronized.",
+        );
+        error.code = "MFA_CODE_INVALID";
+        error.statusCode = 400;
+        throw error;
+      }
+      await mfaService.enableTotpMfa(userId, ephemeralSecret);
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        action: "USER_MFA_METHOD_UPDATED",
+        entityType: "User",
+        entityId: userId,
+        metadata: { method },
+      },
+    });
+
+    const updatedUser = await this.getProfile(userId);
+    return {
+      user: updatedUser,
+      method,
+    };
   }
 
   /**
@@ -752,19 +1430,6 @@ export class IdentityService {
         user.email,
         user.firstName,
       );
-
-      try {
-        await emailService.sendPasswordResetEmail(
-          user.email,
-          user.firstName,
-          rawToken,
-        );
-      } catch (err: any) {
-        console.warn(
-          "Direct password reset email deferred to outbox:",
-          err?.message,
-        );
-      }
     }
 
     return {
@@ -899,20 +1564,7 @@ export class IdentityService {
       throw error;
     }
 
-    return {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      phoneNumber: user.phoneNumber,
-      avatarUrl: (user as any).avatarUrl || null,
-      birthday: (user as any).birthday || null,
-      clientId: user.clientId,
-      role: user.role as UserRole,
-      isVerified: user.isVerified,
-      createdAt: user.createdAt,
-      referralCode: user.referralCode || null,
-    };
+    return this.formatUserSummary(user);
   }
 
   /**

@@ -17,14 +17,27 @@ export interface CreateCustomerData {
   referredById?: string;
 }
 
+export interface CreateGoogleCustomerData {
+  providerUserId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  clientId: string;
+  avatarUrl?: string | null;
+  referralCode: string;
+  referredById?: string;
+  onboardingCompleted: boolean;
+}
+
 export interface CreateStaffData {
   firstName: string;
   lastName: string;
   email: string;
   phoneNumber?: string;
   role: UserRole;
-  passwordHash?: string;
   clientId: string;
+  rawSetupToken?: string;
+  setupTokenHash?: string;
   isVerified?: boolean;
 }
 
@@ -41,6 +54,68 @@ export class IdentityRepository {
     });
   }
 
+  async findIdentity(provider: string, providerUserId: string) {
+    return prisma.authIdentity.findUnique({
+      where: {
+        provider_providerUserId: {
+          provider,
+          providerUserId,
+        },
+      },
+      include: {
+        user: true,
+      },
+    });
+  }
+
+  async findByGoogleId(googleId: string): Promise<User | null> {
+    const identity = await this.findIdentity("GOOGLE", googleId);
+    return identity?.user || null;
+  }
+
+  async linkGoogleAccount(
+    userId: string,
+    providerUserId: string,
+    email?: string,
+  ): Promise<User> {
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    await prisma.authIdentity.upsert({
+      where: {
+        provider_providerUserId: {
+          provider: "GOOGLE",
+          providerUserId,
+        },
+      },
+      create: {
+        userId,
+        provider: "GOOGLE",
+        providerUserId,
+        email: email || user.email,
+      },
+      update: {
+        userId,
+        email: email || user.email,
+      },
+    });
+    return user;
+  }
+
+  async clearPasswordAndRevokeSessions(userId: string): Promise<User> {
+    return prisma.$transaction(async (tx) => {
+      await tx.authSession.updateMany({
+        where: { userId, isRevoked: false },
+        data: { isRevoked: true },
+      });
+      return tx.user.update({
+        where: { id: userId },
+        data: {
+          passwordHash: null,
+          isVerified: true,
+        },
+      });
+    });
+  }
+
   async findByClientId(clientId: string): Promise<User | null> {
     return prisma.user.findUnique({
       where: { clientId },
@@ -50,6 +125,55 @@ export class IdentityRepository {
   async findByReferralCode(referralCode: string): Promise<User | null> {
     return prisma.user.findUnique({
       where: { referralCode: referralCode.trim().toUpperCase() },
+    });
+  }
+
+  /**
+   * Atomically registers a customer via Google OAuth,
+   * stores verified status, clientId, AuthIdentity, and records outbox domain events.
+   */
+  async createGoogleCustomer(data: CreateGoogleCustomerData): Promise<User> {
+    return prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: data.email.toLowerCase(),
+          firstName: data.firstName,
+          lastName: data.lastName,
+          clientId: data.clientId,
+          avatarUrl: data.avatarUrl,
+          role: UserRole.CUSTOMER,
+          isVerified: true,
+          onboardingCompleted: data.onboardingCompleted,
+          referralCode: data.referralCode,
+          referredById: data.referredById,
+        },
+      });
+
+      await tx.authIdentity.create({
+        data: {
+          userId: user.id,
+          provider: "GOOGLE",
+          providerUserId: data.providerUserId,
+          email: data.email.toLowerCase(),
+        },
+      });
+
+      await tx.outboxEvent.create({
+        data: {
+          eventType: "identity.oauth_registered",
+          aggregateType: "User",
+          aggregateId: user.id,
+          payload: {
+            userId: user.id,
+            email: user.email,
+            clientId: user.clientId,
+            role: user.role,
+            provider: "GOOGLE",
+          },
+        },
+      });
+
+      return user;
     });
   }
 

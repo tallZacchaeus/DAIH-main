@@ -57,6 +57,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const recentToastsRef = React.useRef<Map<string, number>>(new Map());
 
   const dismiss = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -64,6 +65,26 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const show = useCallback(
     (type: ToastType, message: string, options?: ToastOptions) => {
+      const title = options?.title || "";
+      const toastKey = `${type}:${title}:${message}`;
+      const now = Date.now();
+
+      // Deduplication guard: ignore duplicate identical toasts triggered within 1500ms
+      const lastShown = recentToastsRef.current.get(toastKey);
+      if (lastShown && now - lastShown < 1500) {
+        return;
+      }
+      recentToastsRef.current.set(toastKey, now);
+
+      // Periodic garbage collection of old keys
+      if (recentToastsRef.current.size > 50) {
+        for (const [k, timestamp] of recentToastsRef.current.entries()) {
+          if (now - timestamp > 5000) {
+            recentToastsRef.current.delete(k);
+          }
+        }
+      }
+
       const id = Math.random().toString(36).substring(2, 9);
       const duration = options?.duration ?? 4500;
 
@@ -75,7 +96,19 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
         duration,
       };
 
-      setToasts((prev) => [...prev, newToast]);
+      setToasts((prev) => {
+        // Prevent duplicate toast if an identical one is already actively displayed
+        const isDuplicate = prev.some(
+          (t) =>
+            t.type === type &&
+            t.message === message &&
+            (t.title || "") === title,
+        );
+        if (isDuplicate) {
+          return prev;
+        }
+        return [...prev, newToast];
+      });
 
       if (duration > 0) {
         setTimeout(() => {

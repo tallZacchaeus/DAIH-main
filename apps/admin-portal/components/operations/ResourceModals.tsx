@@ -13,6 +13,7 @@ import {
   UpdatePricingPlanDTO,
   CreateBlackoutDTO,
   UpsertScheduleDTO,
+  decodeHtmlEntities,
 } from "@daih/types";
 import {
   Trash2,
@@ -445,16 +446,20 @@ export function AddEditResourceModal({
           description: resourceToEdit.description || "",
           capacity: resourceToEdit.capacity || 1,
           location: resourceToEdit.location || "",
-          amenities: resourceToEdit.amenities || [
-            "High-Speed Internet/Wi-Fi",
-            "24/7 Power supply",
-            "Water (Hot/Cold)",
-          ],
+          amenities: (
+            resourceToEdit.amenities || [
+              "High-Speed Internet/Wi-Fi",
+              "24/7 Power supply",
+              "Water (Hot/Cold)",
+            ]
+          ).map(decodeHtmlEntities),
           imageUrl: resourceToEdit.imageUrl || "/images/search/2.jpg",
           isPopular: Boolean(resourceToEdit.isPopular),
           isActive: resourceToEdit.isActive !== false,
         });
-        setAmenitiesInput((resourceToEdit.amenities || []).join(", "));
+        setAmenitiesInput(
+          (resourceToEdit.amenities || []).map(decodeHtmlEntities).join(", "),
+        );
       } else {
         // Reset to clean blank form on add
         setFormData({
@@ -486,11 +491,13 @@ export function AddEditResourceModal({
     e.preventDefault();
     const parsedAmenities = amenitiesInput
       .split(",")
-      .map((a) => a.trim())
+      .map((a) => decodeHtmlEntities(a.trim()))
       .filter(Boolean);
 
     onSave({
       ...formData,
+      name: decodeHtmlEntities(formData.name),
+      description: decodeHtmlEntities(formData.description),
       amenities: parsedAmenities,
       capacity: Number(formData.capacity) || 1,
     });

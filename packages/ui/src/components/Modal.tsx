@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "../utils/cn";
 import { X } from "lucide-react";
 
@@ -19,6 +20,12 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   className,
 }) => {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpen) onClose();
@@ -33,17 +40,17 @@ export const Modal: React.FC<ModalProps> = ({
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
       <div
-        className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
         onClick={onClose}
       />
       <div
         className={cn(
-          "relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-2xl transition-all z-10 overflow-hidden",
+          "relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-2xl transition-all z-10 overflow-hidden animate-in fade-in zoom-in-95 duration-150",
           className,
         )}
       >
@@ -56,12 +63,14 @@ export const Modal: React.FC<ModalProps> = ({
           <button
             onClick={onClose}
             className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
+            aria-label="Close modal"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
         <div className="p-6 pt-4 overflow-y-auto flex-1">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };

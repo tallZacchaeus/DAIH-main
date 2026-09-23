@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { api } from "@daih/api-client";
-import { FacilityResource } from "@daih/types";
+import { FacilityResource, decodeHtmlEntities } from "@daih/types";
 import { Loader2 } from "lucide-react";
 
 import { getWorkspaceImage } from "../../lib/image-utils";
@@ -162,7 +162,7 @@ export default function OurPlansPage() {
                         </div>
                         <ul className="ul-style-3 flex-grow-1 mb-4">
                           {(resource.amenities || []).map((amenity, idx) => (
-                            <li key={idx}>{amenity}</li>
+                            <li key={idx}>{decodeHtmlEntities(amenity)}</li>
                           ))}
                         </ul>
                         <div

@@ -48,6 +48,15 @@ export const config = {
       process.env.JWT_SECRET ||
       "dev-secret-key-12345678901234567890",
   },
+  google: {
+    clientId:
+      process.env.GOOGLE_CLIENT_ID ||
+      "mock-google-client-id.apps.googleusercontent.com",
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+    redirectUri:
+      process.env.GOOGLE_REDIRECT_URI ||
+      "http://localhost:4000/api/v1/identity/oauth/google/callback",
+  },
   cookies: {
     refreshCookieName:
       process.env.COOKIE_NAME ||

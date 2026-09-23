@@ -25,8 +25,8 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
   isFilterOpen,
 }) => {
   return (
-    <header className="bg-white sticky top-0 z-10 border-b border-[#EBE7F5] px-4 sm:px-8 py-6 shadow-xs -mx-4 sm:-mx-6 lg:-mx-8 -mt-4 sm:-mt-6 lg:-mt-8 mb-6">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="border-b border-[#EBE7F5] pb-6 mb-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         {/* Title & Subtitle */}
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#23055c] tracking-tight">
@@ -72,7 +72,7 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
 
       {/* Quick Filters Chips */}
       <div
-        className={`max-w-7xl mx-auto transition-all duration-200 ${
+        className={`transition-all duration-200 ${
           isFilterOpen ? "mt-4 block" : "hidden md:block md:mt-4"
         }`}
       >
@@ -82,6 +82,6 @@ export const DiscoveryHeader: React.FC<DiscoveryHeaderProps> = ({
           onSelectCategory={onSelectCategory}
         />
       </div>
-    </header>
+    </div>
   );
 };
