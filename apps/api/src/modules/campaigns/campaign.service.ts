@@ -211,6 +211,27 @@ export class CampaignService {
       },
     });
 
+    if (createdByUserId) {
+      try {
+        await prisma.auditLog.create({
+          data: {
+            userId: createdByUserId,
+            action: "CAMPAIGN_CREATE",
+            entityType: "Campaign",
+            entityId: campaign.id,
+            metadata: {
+              name: campaign.name,
+              type: campaign.type,
+              coinReward: campaign.coinReward
+                ? Number(campaign.coinReward)
+                : null,
+              channel: campaign.channel,
+            },
+          },
+        });
+      } catch {}
+    }
+
     return campaign;
   }
 
@@ -405,7 +426,11 @@ export class CampaignService {
   }
 
   // ─── Campaign Execution Engine with 6 Guardrails ───────────────────────────
-  async executeCampaign(campaignId: string): Promise<{
+  async executeCampaign(
+    campaignId: string,
+    executedByUserId?: string,
+    ipAddress?: string,
+  ): Promise<{
     targeted: number;
     sent: number;
     holdout: number;
@@ -654,6 +679,35 @@ export class CampaignService {
         status: CampaignStatus.ACTIVE,
       },
     });
+
+    if (executedByUserId) {
+      try {
+        await prisma.auditLog.create({
+          data: {
+            userId: executedByUserId,
+            action: "CAMPAIGN_EXECUTE",
+            entityType: "Campaign",
+            entityId: campaignId,
+            ipAddress: ipAddress || null,
+            metadata: {
+              campaignName: campaign.name,
+              channel: campaign.channel,
+              coinReward: campaign.coinReward
+                ? Number(campaign.coinReward)
+                : null,
+              targeted: recipients.length,
+              sent: sentCount,
+              holdout: holdoutCount,
+              deferredQuietHours: deferredCount,
+              suppressedFrequencyCap: freqCapCount,
+              suppressedBudget: budgetCapCount,
+            },
+          },
+        });
+      } catch (auditErr) {
+        console.warn("[CampaignService] AuditLog recording notice:", auditErr);
+      }
+    }
 
     return {
       targeted: recipients.length,

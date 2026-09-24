@@ -90,7 +90,13 @@ vi.mock("../../db/client.js", () => {
     },
     coinHold: {
       findUnique: vi.fn(async ({ where }: any) => {
-        return store.holds.find((h) => h.bookingId === where.bookingId) || null;
+        return (
+          store.holds.find(
+            (h) =>
+              (where.id && h.id === where.id) ||
+              (where.bookingId && h.bookingId === where.bookingId),
+          ) || null
+        );
       }),
       findMany: vi.fn(async ({ where }: any) => {
         return store.holds.filter((h) => {
@@ -134,9 +140,6 @@ vi.mock("../../db/client.js", () => {
         };
         return store.holds[idx];
       }),
-    },
-    loyaltyWallet: {
-      upsert: vi.fn(async () => ({})),
     },
     booking: {
       findUnique: vi.fn(async ({ where, include }: any) => {

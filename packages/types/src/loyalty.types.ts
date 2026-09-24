@@ -6,7 +6,11 @@ export type LoyaltyTransactionType =
   | "REFEREE_WELCOME_BONUS"
   | "REDEMPTION_BOOKING"
   | "ADMIN_ADJUSTMENT"
-  | "REFUND_CLAWBACK";
+  | "REFUND_CLAWBACK"
+  | "BIRTHDAY_BONUS"
+  | "STREAK_BONUS"
+  | "COIN_EXPIRY"
+  | "REDEMPTION_REVERSAL";
 
 export interface LoyaltyWalletDTO {
   id: string;

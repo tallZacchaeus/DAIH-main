@@ -53,6 +53,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
 
     if (typeof window !== "undefined") {
       window.addEventListener("focus", handleUpdate);
+      window.addEventListener("visibilitychange", handleUpdate);
       window.addEventListener("daih:loyalty-updated", handleUpdate);
     }
 
@@ -60,6 +61,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
       isMounted = false;
       if (typeof window !== "undefined") {
         window.removeEventListener("focus", handleUpdate);
+        window.removeEventListener("visibilitychange", handleUpdate);
         window.removeEventListener("daih:loyalty-updated", handleUpdate);
       }
     };
@@ -164,7 +166,9 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
             >
               <Coins className="w-3.5 h-3.5 text-amber-500 group-hover:scale-110 transition-transform" />
               <span className="text-xs font-bold font-mono">
-                {coinBalance !== null ? coinBalance.toLocaleString() : "0"}
+                {coinBalance !== null
+                  ? Math.floor(Number(coinBalance) || 0).toLocaleString()
+                  : "0"}
               </span>
             </Link>
 

@@ -47,7 +47,9 @@ export async function handleLoyaltyEvents(event: OutboxEvent): Promise<void> {
     }
 
     case "identity.oauth_registered":
-    case "identity.customer_registered": {
+    case "identity.customer_registered":
+    case "identity.user_registered":
+    case "identity.email_verified": {
       const userId = payload?.userId || event.aggregateId;
       if (userId) {
         try {
@@ -97,6 +99,8 @@ outboxService.registerHandler(
   "identity.customer_registered",
   handleLoyaltyEvents,
 );
+outboxService.registerHandler("identity.user_registered", handleLoyaltyEvents);
+outboxService.registerHandler("identity.email_verified", handleLoyaltyEvents);
 outboxService.registerHandler("booking.confirmed", handleLoyaltyEvents);
 outboxService.registerHandler("booking.cancelled", handleLoyaltyEvents);
 outboxService.registerHandler("booking.expired", handleLoyaltyEvents);

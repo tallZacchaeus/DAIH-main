@@ -164,7 +164,13 @@ export class CampaignController {
   execute = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const id = req.params.id as string;
-      const result = await this.service.executeCampaign(id);
+      const executedByUserId = req.user?.id;
+      const ipAddress = req.ip || req.socket.remoteAddress;
+      const result = await this.service.executeCampaign(
+        id,
+        executedByUserId,
+        ipAddress,
+      );
       res.status(200).json({ success: true, data: result });
     } catch (err) {
       next(err);

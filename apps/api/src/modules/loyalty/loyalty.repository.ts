@@ -1,9 +1,6 @@
 import { prisma } from "../../db/client.js";
-import {
-  Prisma,
-  LoyaltyTransactionType,
-  LoyaltyFormulaMode,
-} from "@prisma/client";
+import { Prisma, LoyaltyFormulaMode, CoinLedgerAction } from "@prisma/client";
+import { Decimal } from "@prisma/client/runtime/library";
 import {
   LoyaltySettingsRecord,
   UpdateLoyaltySettingsDTO,
@@ -12,9 +9,18 @@ import {
   LoyaltyLedgerListResponse,
   AdminLoyaltyStatsDTO,
   LoyaltySettingsAuditDTO,
+  LoyaltyTransactionType,
 } from "@daih/types";
 import { redis } from "../../config/redis.js";
 import { getMemberTier } from "../../config/peedee.config.js";
+import { coinService } from "./coin.service.js";
+import {
+  TRANSACTION_TYPE_TO_ACTION,
+  ACTION_TO_TRANSACTION_TYPE,
+  mapActionToTransactionType,
+  formatLedgerDescription,
+  toCoinNumber,
+} from "./loyalty.utils.js";
 
 const SETTINGS_CACHE_KEY = "daih:loyalty_settings";
 const SETTINGS_CACHE_TTL = 300; // 5 minutes
@@ -369,23 +375,22 @@ export class LoyaltyRepository {
   }
 
   /**
-   * Ensure wallet exists for user in a single atomic database operation
+   * Ensure wallet exists for user in a single atomic database operation.
+   * Kept for backwards compatibility; returns an in-memory representation.
    */
   async getOrCreateWallet(
     userId: string,
     tx: Prisma.TransactionClient | typeof prisma = prisma,
   ) {
-    return tx.loyaltyWallet.upsert({
-      where: { userId },
-      create: {
-        userId,
-        balance: 0,
-        reservedCoins: 0,
-        lifetimeEarned: 0,
-        lifetimeSpent: 0,
-      },
-      update: {},
-    });
+    const coinBal = await tx.coinBalance.findUnique({ where: { userId } });
+    return {
+      id: userId,
+      userId,
+      balance: coinBal ? toCoinNumber(coinBal.balance) : 0,
+      reservedCoins: 0,
+      lifetimeEarned: coinBal ? toCoinNumber(coinBal.lifetimeEarned) : 0,
+      lifetimeSpent: coinBal ? toCoinNumber(coinBal.lifetimeBurned) : 0,
+    };
   }
 
   /**
@@ -397,12 +402,11 @@ export class LoyaltyRepository {
     tx: Prisma.TransactionClient | typeof prisma = prisma,
   ): Promise<boolean> {
     if (!referenceId) return false;
-    const existing = await tx.loyaltyTransaction.findUnique({
+    const action = TRANSACTION_TYPE_TO_ACTION[type];
+    const existing = await tx.coinLedgerEntry.findFirst({
       where: {
-        referenceId_type: {
-          referenceId,
-          type,
-        },
+        referenceId,
+        ...(action ? { action } : {}),
       },
       select: { id: true },
     });
@@ -410,7 +414,8 @@ export class LoyaltyRepository {
   }
 
   /**
-   * Credit coins atomically with append-only ledger transaction
+   * Credit coins atomically with append-only ledger transaction.
+   * Delegates directly to authoritative coinService.
    */
   async creditCoins(
     userId: string,
@@ -419,7 +424,7 @@ export class LoyaltyRepository {
     referenceId: string,
     description: string,
     metadata: Record<string, any> = {},
-    tx: Prisma.TransactionClient,
+    tx?: Prisma.TransactionClient,
   ) {
     if (!referenceId || !referenceId.trim()) {
       throw new Error(
@@ -428,116 +433,88 @@ export class LoyaltyRepository {
     }
 
     const cleanRef = referenceId.trim();
+    const action =
+      TRANSACTION_TYPE_TO_ACTION[type] || CoinLedgerAction.ADMIN_ADJUSTMENT;
+    const idempotencyKey = `credit_${type}_${cleanRef}`;
 
-    // Idempotency check: if already awarded, return existing wallet
-    const alreadyClaimed = await this.hasRewardBeenClaimed(cleanRef, type, tx);
-    if (alreadyClaimed) {
-      const existingWallet = await this.getOrCreateWallet(userId, tx);
-      return { wallet: existingWallet, duplicate: true };
-    }
-
-    // Atomic upsert: creates wallet or increments balance in a SINGLE database round trip
-    const updatedWallet = await tx.loyaltyWallet.upsert({
-      where: { userId },
-      create: {
+    const res = await coinService.creditCoins(
+      {
         userId,
-        balance: amount,
-        reservedCoins: 0,
-        lifetimeEarned: amount,
-        lifetimeSpent: 0,
-      },
-      update: {
-        balance: { increment: amount },
-        lifetimeEarned: { increment: amount },
-      },
-    });
-
-    // Append ledger entry with required referenceId
-    const ledgerTx = await tx.loyaltyTransaction.create({
-      data: {
-        walletId: updatedWallet.id,
-        userId,
+        action,
         amount,
-        balanceAfter: updatedWallet.balance,
-        type,
-        referenceId: cleanRef,
         referenceType: type.includes("REFERRAL") ? "REFERRAL" : "TRANSACTION",
-        description,
-        metadata,
+        referenceId: cleanRef,
+        idempotencyKey,
+        metadata: {
+          ...metadata,
+          description,
+        },
       },
-    });
+      tx,
+    );
 
-    return { wallet: updatedWallet, transaction: ledgerTx, duplicate: false };
+    return {
+      wallet: { id: userId, userId, balance: res.newBalance },
+      transaction: res.entry,
+      duplicate: res.duplicate,
+    };
   }
 
   /**
-   * Reserve coins for booking hold (two-phase hold)
+   * Reserve coins for booking hold (two-phase hold).
+   * Delegates directly to authoritative coinService.createHold.
    */
   async reserveCoinsForHold(
     userId: string,
     amount: number,
     bookingId: string,
-    tx: Prisma.TransactionClient,
+    tx?: Prisma.TransactionClient,
   ): Promise<boolean> {
-    await this.getOrCreateWallet(userId, tx);
+    try {
+      const settings = await this.getSettings();
+      const rateFactor =
+        settings.redemptionRateCoins > 0
+          ? settings.redemptionRateNgn / settings.redemptionRateCoins
+          : 1;
+      const nairaValue = Math.round(amount * rateFactor * 100) / 100;
 
-    // Check existing hold for this booking if any
-    const booking = await tx.booking.findUnique({
-      where: { id: bookingId },
-      select: { redeemedCoins: true },
-    });
-
-    const previouslyHeld = Number(booking?.redeemedCoins || 0);
-    const delta = amount - previouslyHeld;
-
-    if (delta <= 0) {
-      // Amount decreased or unchanged
-      if (delta < 0) {
-        await this.releaseCoinsFromHold(userId, Math.abs(delta), tx);
-      }
+      await coinService.createHold({
+        userId,
+        bookingId,
+        amount,
+        nairaValue,
+      });
       return true;
+    } catch {
+      return false;
     }
-
-    // Atomic query: only increment reservedCoins if available balance (balance - reservedCoins) >= delta
-    const result = await tx.$executeRawUnsafe(
-      `
-      UPDATE loyalty_wallets 
-      SET "reservedCoins" = "reservedCoins" + $1,
-          "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "userId" = $2 
-        AND ("balance" - "reservedCoins") >= $1;
-      `,
-      delta,
-      userId,
-    );
-
-    return result > 0;
   }
 
   /**
-   * Release reserved coins from hold (safe atomic decrement with GREATEST(0, ...))
+   * Release reserved coins from hold.
    */
   async releaseCoinsFromHold(
     userId: string,
     amount: number,
     tx: Prisma.TransactionClient | typeof prisma = prisma,
   ): Promise<void> {
-    if (amount <= 0) return;
-
-    await tx.$executeRawUnsafe(
-      `
-      UPDATE loyalty_wallets 
-      SET "reservedCoins" = GREATEST(0, "reservedCoins" - $1),
-          "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "userId" = $2;
-      `,
-      amount,
-      userId,
-    );
+    const activeHolds = await tx.coinHold.findMany({
+      where: {
+        userId,
+        status: "ACTIVE",
+      },
+    });
+    for (const hold of activeHolds) {
+      await tx.coinHold.update({
+        where: { id: hold.id },
+        data: { status: "RELEASED" },
+      });
+    }
   }
 
   /**
-   * Confirm redeemed coins on payment completion (converts hold into permanent debit)
+   * Confirm redeemed coins on payment completion (converts hold into permanent debit).
+   * Delegates directly to authoritative coinService.burnHold.
    */
   async confirmRedeemedCoins(
     userId: string,
@@ -545,7 +522,7 @@ export class LoyaltyRepository {
     referenceId: string,
     description: string,
     metadata: Record<string, any> = {},
-    tx: Prisma.TransactionClient,
+    tx?: Prisma.TransactionClient,
   ) {
     if (!referenceId || !referenceId.trim()) {
       throw new Error(
@@ -555,187 +532,104 @@ export class LoyaltyRepository {
 
     const cleanRef = referenceId.trim();
 
-    // Idempotency check: don't double-debit if already confirmed
-    const alreadyRedeemed = await this.hasRewardBeenClaimed(
-      cleanRef,
-      LoyaltyTransactionType.REDEMPTION_BOOKING,
-      tx,
-    );
-    if (alreadyRedeemed) {
-      return { duplicate: true };
-    }
-
-    // Execute atomic balance and hold decrement and return updated row in a SINGLE database round trip
-    let rows = await tx.$queryRawUnsafe<Array<{ id: string; balance: any }>>(
-      `
-      UPDATE loyalty_wallets 
-      SET "balance" = "balance" - $1,
-          "reservedCoins" = GREATEST(0, "reservedCoins" - $1),
-          "lifetimeSpent" = "lifetimeSpent" + $1,
-          "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "userId" = $2 AND "balance" >= $1
-      RETURNING "id", "balance";
-      `,
-      amount,
-      userId,
-    );
-
-    let isDeficit = false;
-    if (!rows || rows.length === 0) {
-      // Late payment / hold expiry race: user spent balance while webhook was in-flight.
-      // Prioritize confirmed payment: debit into negative debt ceiling and flag deficit audit.
-      rows = await tx.$queryRawUnsafe<Array<{ id: string; balance: any }>>(
-        `
-        UPDATE loyalty_wallets 
-        SET "balance" = "balance" - $1,
-            "reservedCoins" = GREATEST(0, "reservedCoins" - $1),
-            "lifetimeSpent" = "lifetimeSpent" + $1,
-            "updatedAt" = CURRENT_TIMESTAMP
-        WHERE "userId" = $2
-        RETURNING "id", "balance";
-        `,
-        amount,
-        userId,
-      );
-      isDeficit = true;
-    }
-
-    if (!rows || rows.length === 0) {
-      throw new Error(
-        "COIN_WALLET_NOT_FOUND: Failed to locate or debit customer loyalty wallet",
-      );
-    }
-
-    const updatedRow = rows[0];
-
-    if (isDeficit) {
-      await tx.auditLog
-        .create({
-          data: {
-            userId,
-            action: "LATE_PAYMENT_COIN_DEFICIT",
-            entityType: "LoyaltyWallet",
-            entityId: updatedRow.id,
-            metadata: {
-              bookingId: cleanRef,
-              shortfallCoins: Math.abs(Number(updatedRow.balance)),
-              amount,
-            },
+    const burnRes = await coinService.burnHold(cleanRef, tx);
+    if (!burnRes.success) {
+      // If hold was already expired or not found, fall back to atomic debit
+      const debitRes = await coinService.debitCoins(
+        {
+          userId,
+          action: CoinLedgerAction.HOLD_BURNED,
+          amount,
+          referenceType: "BOOKING",
+          referenceId: cleanRef,
+          idempotencyKey: `burn_hold_${cleanRef}`,
+          metadata: {
+            ...metadata,
+            description,
           },
-        })
-        .catch(() => {});
+        },
+        tx,
+      );
+      return {
+        wallet: { id: userId, userId, balance: debitRes.newBalance },
+        transaction: debitRes.entry,
+        duplicate: debitRes.duplicate,
+      };
     }
 
-    const ledgerTx = await tx.loyaltyTransaction.create({
-      data: {
-        walletId: updatedRow.id,
-        userId,
-        amount: -amount,
-        balanceAfter: Number(updatedRow.balance),
-        type: LoyaltyTransactionType.REDEMPTION_BOOKING,
-        referenceId: cleanRef,
-        referenceType: "BOOKING",
-        description,
-        metadata: {
-          ...metadata,
-          isDeficit,
-        },
-      },
+    const currentBal = await (tx || prisma).coinBalance.findUnique({
+      where: { userId },
     });
 
-    return { wallet: updatedRow, transaction: ledgerTx, duplicate: false };
+    return {
+      wallet: {
+        id: userId,
+        userId,
+        balance: currentBal ? toCoinNumber(currentBal.balance) : 0,
+      },
+      duplicate: false,
+    };
   }
 
   /**
-   * Clawback payment reward coins on booking cancellation or refund
+   * Clawback payment reward coins on booking cancellation or refund.
+   * Delegates directly to authoritative coinService.debitCoins.
    */
   async clawbackPaymentReward(
     bookingId: string,
     transactionId: string,
-    tx: Prisma.TransactionClient,
+    tx?: Prisma.TransactionClient,
   ): Promise<{
     coinsClawedBack: number;
     unrecoveredCoins: number;
     fiatToDockNgn: number;
   }> {
-    // 1. Find the reward transaction associated with this transactionId
-    const rewardTx = await tx.loyaltyTransaction.findFirst({
+    const rewardEntry = await (tx || prisma).coinLedgerEntry.findFirst({
       where: {
         referenceId: transactionId,
-        type: LoyaltyTransactionType.TRANSACTION_REWARD,
+        action: CoinLedgerAction.BOOKING_EARN,
       },
     });
 
-    if (!rewardTx || Number(rewardTx.amount) <= 0) {
+    if (!rewardEntry || Number(rewardEntry.amount) <= 0) {
       return { coinsClawedBack: 0, unrecoveredCoins: 0, fiatToDockNgn: 0 };
     }
 
-    // Check if already clawed back
-    const alreadyClawedBack = await this.hasRewardBeenClaimed(
-      `CLAWBACK-${transactionId}`,
-      LoyaltyTransactionType.REFUND_CLAWBACK,
+    const coinsToClawback = Number(rewardEntry.amount);
+    const debitRes = await coinService.debitCoins(
+      {
+        userId: rewardEntry.userId,
+        action: CoinLedgerAction.REFUND_CLAWBACK,
+        amount: coinsToClawback,
+        referenceType: "TRANSACTION",
+        referenceId: `CLAWBACK-${transactionId}`,
+        idempotencyKey: `clawback_${transactionId}`,
+        metadata: {
+          bookingId,
+          transactionId,
+          originalRewardAmount: coinsToClawback,
+        },
+      },
       tx,
     );
-    if (alreadyClawedBack) {
-      return { coinsClawedBack: 0, unrecoveredCoins: 0, fiatToDockNgn: 0 };
-    }
 
-    const coinsToClawback = Number(rewardTx.amount);
-    const wallet = await this.getOrCreateWallet(rewardTx.userId, tx);
-    const availableBalance = Number(wallet.balance);
-
-    const coinsRecoverable = Math.min(availableBalance, coinsToClawback);
-    const unrecoveredCoins = Math.max(0, coinsToClawback - coinsRecoverable);
-
-    // Get settings for fiat valuation
+    const coinsClawedBack = Math.abs(Number(debitRes.entry.amount));
+    const unrecoveredCoins = Math.max(0, coinsToClawback - coinsClawedBack);
     const settings = await this.getSettings();
     const fiatToDockNgn =
       (unrecoveredCoins / (settings.redemptionRateCoins || 100)) *
       (settings.redemptionRateNgn || 100);
 
-    if (coinsRecoverable > 0) {
-      await tx.$executeRawUnsafe(
-        `
-        UPDATE loyalty_wallets 
-        SET "balance" = "balance" - $1,
-            "lifetimeEarned" = GREATEST(0, "lifetimeEarned" - $1),
-            "updatedAt" = CURRENT_TIMESTAMP
-        WHERE "userId" = $2;
-        `,
-        coinsRecoverable,
-        rewardTx.userId,
-      );
-
-      await tx.loyaltyTransaction.create({
-        data: {
-          walletId: wallet.id,
-          userId: rewardTx.userId,
-          amount: -coinsRecoverable,
-          balanceAfter: availableBalance - coinsRecoverable,
-          type: LoyaltyTransactionType.REFUND_CLAWBACK,
-          referenceId: `CLAWBACK-${transactionId}`,
-          referenceType: "TRANSACTION",
-          description: `Clawback of ${coinsRecoverable} ${settings.coinSymbol} for refunded booking transaction ${transactionId}`,
-          metadata: {
-            originalRewardAmount: coinsToClawback,
-            unrecoveredCoins,
-            fiatToDockNgn,
-            bookingId,
-            transactionId,
-          },
-        },
-      });
-    }
-
     return {
-      coinsClawedBack: coinsRecoverable,
+      coinsClawedBack,
       unrecoveredCoins,
       fiatToDockNgn,
     };
   }
 
   /**
-   * Admin manual adjustment (+/-)
+   * Admin manual adjustment (+/-).
+   * Delegates directly to authoritative coinService.adjustCoins.
    */
   async adminAdjust(
     adminUserId: string,
@@ -744,93 +638,10 @@ export class LoyaltyRepository {
     reason: string,
     note?: string,
   ) {
-    return prisma.$transaction(async (tx) => {
-      const adjustmentRef = `ADJ-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-      let updatedWallet: { id: string; balance: any };
-      if (amount < 0) {
-        const absAmount = Math.abs(amount);
-        const rows = await tx.$queryRawUnsafe<
-          Array<{ id: string; balance: any }>
-        >(
-          `
-          UPDATE loyalty_wallets 
-          SET "balance" = "balance" - $1,
-              "lifetimeSpent" = "lifetimeSpent" + $1,
-              "updatedAt" = CURRENT_TIMESTAMP
-          WHERE "userId" = $2 AND "balance" >= $1
-          RETURNING "id", "balance";
-          `,
-          absAmount,
-          targetUserId,
-        );
-
-        if (!rows || rows.length === 0) {
-          const err: any = new Error(
-            "Cannot deduct more coins than the user currently possesses",
-          );
-          err.statusCode = 400;
-          err.code = "INSUFFICIENT_COIN_BALANCE";
-          throw err;
-        }
-
-        updatedWallet = rows[0];
-      } else {
-        updatedWallet = await tx.loyaltyWallet.upsert({
-          where: { userId: targetUserId },
-          create: {
-            userId: targetUserId,
-            balance: amount,
-            lifetimeEarned: amount,
-            reservedCoins: 0,
-            lifetimeSpent: 0,
-          },
-          update: {
-            balance: { increment: amount },
-            lifetimeEarned: { increment: amount },
-          },
-        });
-      }
-
-      const ledgerTx = await tx.loyaltyTransaction.create({
-        data: {
-          walletId: updatedWallet!.id,
-          userId: targetUserId,
-          amount,
-          balanceAfter: updatedWallet!.balance,
-          type: LoyaltyTransactionType.ADMIN_ADJUSTMENT,
-          referenceId: adjustmentRef,
-          referenceType: "MANUAL",
-          description: reason,
-          metadata: {
-            adminUserId,
-            note: note || null,
-          },
-        },
-      });
-
-      await tx.auditLog.create({
-        data: {
-          userId: adminUserId,
-          action: "LOYALTY_COIN_ADJUSTMENT",
-          entityType: "LoyaltyWallet",
-          entityId: updatedWallet.id,
-          metadata: {
-            targetUserId,
-            adjustmentAmount: amount,
-            balanceAfter: Number(updatedWallet!.balance),
-            reason,
-            note,
-            adjustmentRef,
-          },
-        },
-      });
-
-      return {
-        success: true,
-        newBalance: Number(updatedWallet!.balance),
-        transactionId: ledgerTx.id,
-      };
+    return coinService.adjustCoins(adminUserId, targetUserId, amount, {
+      reasonCode: amount > 0 ? "ADMIN_GOODWILL" : "ADMIN_CORRECTION",
+      justification: reason,
+      note,
     });
   }
 
@@ -874,33 +685,54 @@ export class LoyaltyRepository {
   }
 
   /**
-   * Get user wallet with equivalent fiat value
+   * Get user wallet with equivalent fiat value, strictly reconciled with the authoritative engine.
+   * Pure read: never inserts or mutates state on read.
    */
   async getWalletDTO(userId: string): Promise<LoyaltyWalletDTO> {
-    const [wallet, settings] = await Promise.all([
-      this.getOrCreateWallet(userId),
+    const [settings, coinBal, activeHolds] = await Promise.all([
       this.getSettings(),
+      prisma.coinBalance.findUnique({ where: { userId } }),
+      prisma.coinHold.findMany({
+        where: {
+          userId,
+          status: "ACTIVE",
+          expiresAt: { gt: new Date() },
+        },
+      }),
     ]);
 
-    const balance = Number(wallet.balance);
-    const reservedCoins = Number(wallet.reservedCoins);
-    const availableBalance = Math.max(0, balance - reservedCoins);
+    const balance = coinBal ? toCoinNumber(coinBal.balance) : 0;
+    const lifetimeEarned = coinBal ? toCoinNumber(coinBal.lifetimeEarned) : 0;
+    const lifetimeSpent = coinBal ? toCoinNumber(coinBal.lifetimeBurned) : 0;
+
+    const reservedCoins = toCoinNumber(
+      activeHolds.reduce(
+        (sum, h) => sum.plus(new Decimal(h.amount)),
+        new Decimal(0),
+      ),
+    );
+
+    const availableBalance = toCoinNumber(
+      Decimal.max(0, new Decimal(balance).minus(reservedCoins)),
+    );
+
     const conversionFactor =
       settings.redemptionRateCoins > 0
         ? settings.redemptionRateNgn / settings.redemptionRateCoins
         : 1;
-    const equivalentNgnValue =
-      Math.round(availableBalance * conversionFactor * 100) / 100;
-    const tierInfo = getMemberTier(wallet.lifetimeEarned);
+    const equivalentNgnValue = toCoinNumber(
+      new Decimal(availableBalance).times(conversionFactor),
+    );
+    const tierInfo = getMemberTier(lifetimeEarned);
 
     return {
-      id: wallet.id,
-      userId: wallet.userId,
+      id: userId,
+      userId,
       balance,
       reservedCoins,
       availableBalance,
-      lifetimeEarned: Number(wallet.lifetimeEarned),
-      lifetimeSpent: Number(wallet.lifetimeSpent),
+      lifetimeEarned,
+      lifetimeSpent,
       equivalentNgnValue,
       coinSymbol: settings.coinSymbol,
       coinName: settings.coinName,
@@ -910,7 +742,8 @@ export class LoyaltyRepository {
   }
 
   /**
-   * Get user ledger with pagination
+   * Get user ledger with pagination from authoritative coin_ledger_entries.
+   * Filters out 0-amount entries from customer view, sanitizes metadata with allow-list.
    */
   async getLedger(
     userId: string,
@@ -920,35 +753,67 @@ export class LoyaltyRepository {
     const limit = Math.max(1, Math.min(100, options.limit || 20));
     const skip = (page - 1) * limit;
 
-    const where: Prisma.LoyaltyTransactionWhereInput = {
+    let actionFilter: CoinLedgerAction | undefined;
+    if (options.type) {
+      actionFilter =
+        TRANSACTION_TYPE_TO_ACTION[options.type as LoyaltyTransactionType];
+    }
+
+    const where: Prisma.CoinLedgerEntryWhereInput = {
       userId,
-      ...(options.type ? { type: options.type as LoyaltyTransactionType } : {}),
+      amount: { not: 0 },
+      ...(actionFilter ? { action: actionFilter } : {}),
     };
 
     const [total, items] = await Promise.all([
-      prisma.loyaltyTransaction.count({ where }),
-      prisma.loyaltyTransaction.findMany({
+      prisma.coinLedgerEntry.count({ where }),
+      prisma.coinLedgerEntry.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       }),
     ]);
 
+    const ALLOWED_METADATA_KEYS = new Set([
+      "description",
+      "bookingReference",
+      "bookingId",
+      "campaignName",
+      "reason",
+      "shortfall",
+    ]);
+
     return {
-      items: items.map((i) => ({
-        id: i.id,
-        walletId: i.walletId,
-        userId: i.userId,
-        amount: Number(i.amount),
-        balanceAfter: Number(i.balanceAfter),
-        type: i.type as any,
-        referenceId: i.referenceId,
-        referenceType: i.referenceType,
-        description: i.description,
-        metadata: i.metadata as any,
-        createdAt: i.createdAt.toISOString(),
-      })),
+      items: items.map((i) => {
+        let sanitizedMetadata: Record<string, any> | undefined;
+        if (i.metadata && typeof i.metadata === "object") {
+          sanitizedMetadata = {};
+          for (const [k, v] of Object.entries(
+            i.metadata as Record<string, any>,
+          )) {
+            if (ALLOWED_METADATA_KEYS.has(k)) {
+              sanitizedMetadata[k] = v;
+            }
+          }
+        }
+
+        const mappedType = mapActionToTransactionType(i.action);
+
+        return {
+          id: i.id,
+          walletId: i.userId,
+          userId: i.userId,
+          amount: toCoinNumber(i.amount),
+          balanceAfter: toCoinNumber(i.balanceAfter),
+          type: mappedType as any,
+          referenceId: i.referenceId || i.id,
+          referenceType: i.referenceType,
+          description: formatLedgerDescription(i),
+          metadata: sanitizedMetadata,
+          createdAt: i.createdAt.toISOString(),
+        };
+      }),
       total,
       page,
       limit,
@@ -956,7 +821,8 @@ export class LoyaltyRepository {
   }
 
   /**
-   * Get global loyalty ledger for Admin
+   * Get global loyalty ledger for Admin.
+   * Includes 0-amount entries (such as clawback shortfalls) and joins user details.
    */
   async getAdminGlobalLedger(
     options: {
@@ -970,14 +836,17 @@ export class LoyaltyRepository {
     const limit = Math.max(1, Math.min(100, options.limit || 20));
     const skip = (page - 1) * limit;
 
-    const where: Prisma.LoyaltyTransactionWhereInput = {
-      ...(options.type ? { type: options.type as LoyaltyTransactionType } : {}),
+    let actionFilter: CoinLedgerAction | undefined;
+    if (options.type) {
+      actionFilter =
+        TRANSACTION_TYPE_TO_ACTION[options.type as LoyaltyTransactionType];
+    }
+
+    const where: Prisma.CoinLedgerEntryWhereInput = {
+      ...(actionFilter ? { action: actionFilter } : {}),
       ...(options.search
         ? {
             OR: [
-              {
-                description: { contains: options.search, mode: "insensitive" },
-              },
               {
                 referenceId: { contains: options.search, mode: "insensitive" },
               },
@@ -996,18 +865,23 @@ export class LoyaltyRepository {
                   lastName: { contains: options.search, mode: "insensitive" },
                 },
               },
+              {
+                user: {
+                  clientId: { contains: options.search, mode: "insensitive" },
+                },
+              },
             ],
           }
         : {}),
     };
 
     const [total, items] = await Promise.all([
-      prisma.loyaltyTransaction.count({ where }),
-      prisma.loyaltyTransaction.findMany({
+      prisma.coinLedgerEntry.count({ where }),
+      prisma.coinLedgerEntry.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         include: {
           user: {
             select: {
@@ -1024,20 +898,20 @@ export class LoyaltyRepository {
     return {
       items: items.map((i) => ({
         id: i.id,
-        walletId: i.walletId,
+        walletId: i.userId,
         userId: i.userId,
         userName: i.user
           ? `${i.user.firstName} ${i.user.lastName}`.trim()
           : undefined,
         userEmail: i.user?.email,
         userClientId: i.user?.clientId,
-        amount: Number(i.amount),
-        balanceAfter: Number(i.balanceAfter),
-        type: i.type as any,
-        referenceId: i.referenceId,
+        amount: toCoinNumber(i.amount),
+        balanceAfter: toCoinNumber(i.balanceAfter),
+        type: mapActionToTransactionType(i.action),
+        referenceId: i.referenceId || i.id,
         referenceType: i.referenceType,
-        description: i.description,
-        metadata: i.metadata as any,
+        description: formatLedgerDescription(i),
+        metadata: (i.metadata as any) || {},
         createdAt: i.createdAt.toISOString(),
       })),
       total,
@@ -1047,28 +921,32 @@ export class LoyaltyRepository {
   }
 
   /**
-   * Get aggregated admin stats
+   * Get aggregated admin stats from authoritative coin_balances and coin_ledger_entries.
    */
   async getAdminStats(): Promise<AdminLoyaltyStatsDTO> {
-    const [settings, walletAggs, activeEarnersCount, totalTxCount] =
+    const [settings, balanceAggs, activeEarnersCount, totalTxCount] =
       await Promise.all([
         this.getSettings(),
-        prisma.loyaltyWallet.aggregate({
+        prisma.coinBalance.aggregate({
           _sum: {
             balance: true,
             lifetimeEarned: true,
-            lifetimeSpent: true,
+            lifetimeBurned: true,
           },
         }),
-        prisma.loyaltyWallet.count({
+        prisma.coinBalance.count({
           where: { lifetimeEarned: { gt: 0 } },
         }),
-        prisma.loyaltyTransaction.count(),
+        prisma.coinLedgerEntry.count(),
       ]);
 
-    const totalCirculationCoins = Number(walletAggs._sum.balance || 0);
-    const lifetimeCoinsEarned = Number(walletAggs._sum.lifetimeEarned || 0);
-    const lifetimeCoinsRedeemed = Number(walletAggs._sum.lifetimeSpent || 0);
+    const totalCirculationCoins = toCoinNumber(balanceAggs._sum.balance || 0);
+    const lifetimeCoinsEarned = toCoinNumber(
+      balanceAggs._sum.lifetimeEarned || 0,
+    );
+    const lifetimeCoinsRedeemed = toCoinNumber(
+      balanceAggs._sum.lifetimeBurned || 0,
+    );
     const rateFactor =
       settings.redemptionRateCoins > 0
         ? settings.redemptionRateNgn / settings.redemptionRateCoins

@@ -18,6 +18,7 @@ export const config = {
   env: process.env.VITEST ? "test" : process.env.NODE_ENV || "development",
   port: parseInt(process.env.PORT || "4000", 10),
   databaseUrl:
+    process.env.INTEGRATION_TEST_DB_URL ||
     process.env.DATABASE_URL ||
     "postgresql://postgres:postgres@localhost:5432/daih_db?schema=public",
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379",

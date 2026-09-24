@@ -1,5 +1,5 @@
 import { prisma } from "../../db/client.js";
-import { Prisma, LoyaltyTransactionType } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { loyaltyRepository, LoyaltyRepository } from "./loyalty.repository.js";
 import {
   LoyaltySettingsRecord,
@@ -173,7 +173,7 @@ export class LoyaltyService {
       const creditRes = await this.repo.creditCoins(
         transaction.userId,
         coinsToAward,
-        LoyaltyTransactionType.TRANSACTION_REWARD,
+        "TRANSACTION_REWARD",
         transaction.id,
         `Earned ${coinsToAward} ${settings.coinSymbol} for booking ${transaction.booking.reference}`,
         {
@@ -233,7 +233,7 @@ export class LoyaltyService {
             const refCreditRes = await this.repo.creditCoins(
               referrerId,
               settings.coinsPerActiveReferral,
-              LoyaltyTransactionType.ACTIVE_REFERRAL_BONUS,
+              "ACTIVE_REFERRAL_BONUS",
               refereeId, // Use refereeId as unique referenceId!
               `Earned ${settings.coinsPerActiveReferral} ${settings.coinSymbol} for active referral (${transaction.user.firstName} ${transaction.user.lastName})`,
               {
@@ -263,7 +263,7 @@ export class LoyaltyService {
               await this.repo.creditCoins(
                 refereeId,
                 settings.refereeWelcomeBonus,
-                LoyaltyTransactionType.REFEREE_WELCOME_BONUS,
+                "REFEREE_WELCOME_BONUS",
                 referrerId, // Use referrerId as unique referenceId
                 `Welcome bonus of ${settings.refereeWelcomeBonus} ${settings.coinSymbol} for joining via referral`,
                 {
@@ -547,7 +547,17 @@ export class LoyaltyService {
 
   // Delegated wallet / ledger / settings / stats methods
   async getWallet(userId: string): Promise<LoyaltyWalletDTO> {
-    return this.repo.getWalletDTO(userId);
+    const wallet = await this.repo.getWalletDTO(userId);
+    // If a customer has 0 lifetime earned coins, check and award initial signup welcome bonus if eligible
+    if (wallet.balance === 0 && wallet.lifetimeEarned === 0) {
+      try {
+        const bonusRes = await coinService.awardSignupBonus(userId);
+        if (bonusRes.coinsAwarded > 0) {
+          return this.repo.getWalletDTO(userId);
+        }
+      } catch {}
+    }
+    return wallet;
   }
 
   async getLedger(
@@ -590,7 +600,7 @@ export class LoyaltyService {
     dto: AdminManualAdjustmentDTO,
     ipAddress?: string,
   ) {
-    // 1. PeeDee Coin atomic adjustment with 6 guardrails & row-level locking
+    // PeeDee Coin atomic adjustment with 6 guardrails & row-level locking
     const pdResult = await coinService.adjustCoins(
       adminUserId,
       dto.targetUserId,
@@ -602,17 +612,6 @@ export class LoyaltyService {
         ipAddress,
       },
     );
-
-    // 2. Legacy dual-write for backward compatibility
-    try {
-      await this.repo.adminAdjust(
-        adminUserId,
-        dto.targetUserId,
-        dto.amount,
-        dto.justification || dto.reason || "",
-        dto.note,
-      );
-    } catch {}
 
     return {
       success: true,

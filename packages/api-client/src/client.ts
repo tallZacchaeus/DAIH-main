@@ -325,6 +325,7 @@ export class DaihApiClient {
       const jwt = res.accessToken || res.token || null;
       if (jwt) {
         this.setAccessToken(jwt);
+        apiCacheManager.invalidate();
       }
       return { ...res, token: jwt || "" };
     },
@@ -341,6 +342,7 @@ export class DaihApiClient {
       const jwt = res.accessToken || res.token || "";
       if (jwt) {
         this.setAccessToken(jwt);
+        apiCacheManager.invalidate();
       }
       return { ...res, accessToken: jwt, token: jwt };
     },
@@ -486,6 +488,7 @@ export class DaihApiClient {
         await this.request("/identity/logout", { method: "POST" });
       } finally {
         this.setAccessToken(null);
+        apiCacheManager.invalidate();
       }
     },
 

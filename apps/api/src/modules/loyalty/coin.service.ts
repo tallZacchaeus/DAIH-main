@@ -8,6 +8,14 @@ import {
 import { Decimal } from "@prisma/client/runtime/library";
 import { loyaltyRepository } from "./loyalty.repository.js";
 import { CoinAdjustmentReasonCode } from "@daih/types";
+import {
+  roundCoinAmount,
+  validateCoinAmount,
+  applyEntryToTotals,
+  IdempotencyConflictError,
+  toCoinNumber,
+  TotalsState,
+} from "./loyalty.utils.js";
 
 export interface CoinBalanceSummary {
   userId: string;
@@ -108,24 +116,11 @@ export class CoinService {
       return { entry: null, newBalance: 0, duplicate: false };
     }
 
+    const amountToAdd = roundCoinAmount(dto.amount);
+    validateCoinAmount(amountToAdd);
+
     const runInTx = async (tx: Prisma.TransactionClient) => {
-      // 1. Check idempotency first
-      const existing = await tx.coinLedgerEntry.findUnique({
-        where: { idempotencyKey: dto.idempotencyKey },
-      });
-
-      if (existing) {
-        const balance = await tx.coinBalance.findUnique({
-          where: { userId: dto.userId },
-        });
-        return {
-          entry: existing,
-          newBalance: balance ? Number(balance.balance) : 0,
-          duplicate: true,
-        };
-      }
-
-      // 2. Ensure row exists & acquire SELECT FOR UPDATE row-level lock
+      // 1. Ensure row exists & acquire exclusive row-level lock
       await tx.$executeRaw`
         INSERT INTO "coin_balances" ("userId", "balance", "lifetimeEarned", "lifetimeBurned", "version", "updatedAt")
         VALUES (${dto.userId}, 0, 0, 0, 1, NOW())
@@ -148,31 +143,63 @@ export class CoinService {
       `;
 
       const current = rows[0];
-      const currentBalance = new Decimal(current.balance || 0);
-      const currentEarned = new Decimal(current.lifetimeEarned || 0);
-      const amountToAdd = new Decimal(dto.amount);
 
-      const nextBalance = currentBalance.plus(amountToAdd);
-      const nextEarned = currentEarned.plus(amountToAdd);
+      // 2. Check idempotency under lock
+      const existing = await tx.coinLedgerEntry.findUnique({
+        where: { idempotencyKey: dto.idempotencyKey },
+      });
 
-      // 3. Update locked balance row
+      if (existing) {
+        // Parameter mismatch conflict verification
+        if (
+          existing.userId !== dto.userId ||
+          existing.action !== dto.action ||
+          !roundCoinAmount(existing.amount).abs().equals(amountToAdd)
+        ) {
+          throw new IdempotencyConflictError(
+            `Idempotency key "${dto.idempotencyKey}" already used with different parameters`,
+          );
+        }
+        return {
+          entry: existing,
+          newBalance: toCoinNumber(current.balance),
+          duplicate: true,
+        };
+      }
+
+      // 3. Apply state transition via shared pure fold rule
+      const nextTotals = applyEntryToTotals(
+        {
+          balance: new Decimal(current.balance || 0),
+          lifetimeEarned: new Decimal(current.lifetimeEarned || 0),
+          lifetimeBurned: new Decimal(current.lifetimeBurned || 0),
+        },
+        {
+          action: dto.action,
+          amount: amountToAdd,
+          metadata: dto.metadata,
+        },
+      );
+
+      // 4. Update locked balance row
       await tx.coinBalance.update({
         where: { userId: dto.userId },
         data: {
-          balance: nextBalance,
-          lifetimeEarned: nextEarned,
+          balance: nextTotals.balance,
+          lifetimeEarned: nextTotals.lifetimeEarned,
+          lifetimeBurned: nextTotals.lifetimeBurned,
           lastEarnedAt: new Date(),
           version: { increment: 1 },
         },
       });
 
-      // 4. Create immutable append-only ledger entry
+      // 5. Create immutable append-only ledger entry
       const entry = await tx.coinLedgerEntry.create({
         data: {
           userId: dto.userId,
           action: dto.action,
           amount: amountToAdd,
-          balanceAfter: nextBalance,
+          balanceAfter: nextTotals.balance,
           referenceType: dto.referenceType,
           referenceId: dto.referenceId,
           idempotencyKey: dto.idempotencyKey,
@@ -180,26 +207,9 @@ export class CoinService {
         },
       });
 
-      // 5. Dual-write to legacy loyaltyWallet for backward compatibility
-      try {
-        await tx.loyaltyWallet.upsert({
-          where: { userId: dto.userId },
-          create: {
-            userId: dto.userId,
-            balance: nextBalance,
-            lifetimeEarned: nextEarned,
-            lifetimeSpent: 0,
-          },
-          update: {
-            balance: nextBalance,
-            lifetimeEarned: nextEarned,
-          },
-        });
-      } catch {}
-
       return {
         entry,
-        newBalance: Number(nextBalance),
+        newBalance: toCoinNumber(nextTotals.balance),
         duplicate: false,
       };
     };
@@ -218,24 +228,13 @@ export class CoinService {
     dto: DebitCoinDTO,
     externalTx?: Prisma.TransactionClient,
   ): Promise<{ entry: any; newBalance: number; duplicate: boolean }> {
+    const amountToDeduct = roundCoinAmount(dto.amount);
+    if (dto.action !== CoinLedgerAction.REFUND_CLAWBACK) {
+      validateCoinAmount(amountToDeduct);
+    }
+
     const runInTx = async (tx: Prisma.TransactionClient) => {
-      // 1. Check idempotency
-      const existing = await tx.coinLedgerEntry.findUnique({
-        where: { idempotencyKey: dto.idempotencyKey },
-      });
-
-      if (existing) {
-        const balance = await tx.coinBalance.findUnique({
-          where: { userId: dto.userId },
-        });
-        return {
-          entry: existing,
-          newBalance: balance ? Number(balance.balance) : 0,
-          duplicate: true,
-        };
-      }
-
-      // 2. Lock row FOR UPDATE
+      // 1. Ensure row exists & acquire exclusive row-level lock
       await tx.$executeRaw`
         INSERT INTO "coin_balances" ("userId", "balance", "lifetimeEarned", "lifetimeBurned", "version", "updatedAt")
         VALUES (${dto.userId}, 0, 0, 0, 1, NOW())
@@ -258,11 +257,54 @@ export class CoinService {
       `;
 
       const current = rows[0];
-      const currentBalance = new Decimal(current.balance || 0);
-      const currentBurned = new Decimal(current.lifetimeBurned || 0);
-      const amountToDeduct = new Decimal(dto.amount);
 
-      // Check active unexpired holds
+      // 2. Check idempotency under lock
+      const existing = await tx.coinLedgerEntry.findUnique({
+        where: { idempotencyKey: dto.idempotencyKey },
+      });
+
+      if (existing) {
+        if (dto.action === CoinLedgerAction.REFUND_CLAWBACK) {
+          const existingReq =
+            existing.metadata &&
+            typeof existing.metadata === "object" &&
+            "requestedAmount" in (existing.metadata as any)
+              ? new Decimal((existing.metadata as any).requestedAmount)
+              : roundCoinAmount(existing.amount).abs();
+          const newReq =
+            dto.metadata?.requestedAmount != null
+              ? new Decimal(dto.metadata.requestedAmount)
+              : amountToDeduct;
+
+          if (
+            existing.userId !== dto.userId ||
+            existing.action !== dto.action ||
+            existing.referenceId !== dto.referenceId ||
+            !existingReq.equals(newReq)
+          ) {
+            throw new IdempotencyConflictError(
+              `Idempotency key "${dto.idempotencyKey}" already used with different parameters`,
+            );
+          }
+        } else {
+          if (
+            existing.userId !== dto.userId ||
+            existing.action !== dto.action ||
+            !roundCoinAmount(existing.amount).abs().equals(amountToDeduct)
+          ) {
+            throw new IdempotencyConflictError(
+              `Idempotency key "${dto.idempotencyKey}" already used with different parameters`,
+            );
+          }
+        }
+        return {
+          entry: existing,
+          newBalance: toCoinNumber(current.balance),
+          duplicate: true,
+        };
+      }
+
+      // 3. Check active unexpired holds
       const now = new Date();
       const activeHolds = await tx.coinHold.findMany({
         where: {
@@ -277,64 +319,77 @@ export class CoinService {
         new Decimal(0),
       );
 
+      const currentBalance = new Decimal(current.balance || 0);
       const spendable = Decimal.max(0, currentBalance.minus(heldAmount));
 
-      if (spendable.lessThan(amountToDeduct)) {
-        const error: any = new Error(
-          `Insufficient spendable PeeDee Coins. Available: ${spendable.toFixed(0)}, Required: ${amountToDeduct.toFixed(0)}`,
-        );
-        error.code = "INSUFFICIENT_COIN_BALANCE";
-        error.statusCode = 400;
-        throw error;
+      let actualDebit: Decimal;
+      let entryMetadata: Record<string, any> = { ...(dto.metadata || {}) };
+
+      if (dto.action === CoinLedgerAction.REFUND_CLAWBACK) {
+        actualDebit = Decimal.min(spendable, amountToDeduct);
+        const shortfall = amountToDeduct.minus(actualDebit);
+        entryMetadata.requestedAmount = amountToDeduct.toFixed(2);
+        if (shortfall.greaterThan(0)) {
+          entryMetadata.shortfall = shortfall.toFixed(2);
+        }
+      } else {
+        if (spendable.lessThan(amountToDeduct)) {
+          const error: any = new Error(
+            `Insufficient spendable PeeDee Coins. Available: ${spendable.toFixed(0)}, Required: ${amountToDeduct.toFixed(0)}`,
+          );
+          error.code = "INSUFFICIENT_COIN_BALANCE";
+          error.statusCode = 400;
+          throw error;
+        }
+        actualDebit = amountToDeduct;
       }
 
-      const nextBalance = currentBalance.minus(amountToDeduct);
-      const nextBurned = currentBurned.plus(amountToDeduct);
+      const entryAmount = actualDebit.isZero()
+        ? new Decimal(0)
+        : actualDebit.negated();
 
-      // 3. Update locked balance row
+      // 4. Apply state transition via shared pure fold rule
+      const nextTotals = applyEntryToTotals(
+        {
+          balance: currentBalance,
+          lifetimeEarned: new Decimal(current.lifetimeEarned || 0),
+          lifetimeBurned: new Decimal(current.lifetimeBurned || 0),
+        },
+        {
+          action: dto.action,
+          amount: entryAmount,
+          metadata: entryMetadata,
+        },
+      );
+
+      // 5. Update locked balance row
       await tx.coinBalance.update({
         where: { userId: dto.userId },
         data: {
-          balance: nextBalance,
-          lifetimeBurned: nextBurned,
+          balance: nextTotals.balance,
+          lifetimeEarned: nextTotals.lifetimeEarned,
+          lifetimeBurned: nextTotals.lifetimeBurned,
           version: { increment: 1 },
         },
       });
 
-      // 4. Create ledger entry
+      // 6. Create immutable append-only ledger entry
       const entry = await tx.coinLedgerEntry.create({
         data: {
           userId: dto.userId,
           action: dto.action,
-          amount: amountToDeduct.negated(),
-          balanceAfter: nextBalance,
+          amount: entryAmount,
+          balanceAfter: nextTotals.balance,
           referenceType: dto.referenceType,
           referenceId: dto.referenceId,
           idempotencyKey: dto.idempotencyKey,
-          metadata: dto.metadata || {},
+          metadata: entryMetadata,
         },
       });
 
-      // 5. Dual-write to legacy loyaltyWallet
-      try {
-        await tx.loyaltyWallet.upsert({
-          where: { userId: dto.userId },
-          create: {
-            userId: dto.userId,
-            balance: nextBalance,
-            lifetimeEarned: 0,
-            lifetimeSpent: nextBurned,
-          },
-          update: {
-            balance: nextBalance,
-            lifetimeSpent: nextBurned,
-          },
-        });
-      } catch {}
-
       return {
         entry,
-        newBalance: Number(nextBalance),
+        newBalance: toCoinNumber(nextTotals.balance),
         duplicate: false,
       };
     };
@@ -452,57 +507,104 @@ export class CoinService {
         where: { bookingId },
       });
 
-      if (!hold || hold.status !== HoldStatus.ACTIVE) {
+      if (
+        !hold ||
+        hold.status !== HoldStatus.ACTIVE ||
+        hold.expiresAt <= new Date()
+      ) {
         return { success: false, burnedCoins: 0 };
       }
 
-      const amountToBurn = new Decimal(hold.amount);
-
-      // Lock row FOR UPDATE
+      // 1. Ensure row exists & acquire exclusive row-level lock on user's coin_balances
       await tx.$executeRaw`
-        SELECT "balance" FROM "coin_balances" WHERE "userId" = ${hold.userId} FOR UPDATE;
+        INSERT INTO "coin_balances" ("userId", "balance", "lifetimeEarned", "lifetimeBurned", "version", "updatedAt")
+        VALUES (${hold.userId}, 0, 0, 0, 1, NOW())
+        ON CONFLICT ("userId") DO NOTHING;
       `;
 
-      const balanceRecord = await tx.coinBalance.findUnique({
-        where: { userId: hold.userId },
+      const rows = await tx.$queryRaw<
+        Array<{
+          userId: string;
+          balance: any;
+          lifetimeEarned: any;
+          lifetimeBurned: any;
+          version: number;
+        }>
+      >`
+        SELECT "userId", "balance", "lifetimeEarned", "lifetimeBurned", "version"
+        FROM "coin_balances"
+        WHERE "userId" = ${hold.userId}
+        FOR UPDATE;
+      `;
+
+      const current = rows[0];
+
+      // 2. Re-check hold status under the lock to prevent double-burn races
+      const currentHold = await tx.coinHold.findUnique({
+        where: { id: hold.id },
       });
 
-      const currentBalance = new Decimal(balanceRecord?.balance || 0);
-      const currentBurned = new Decimal(balanceRecord?.lifetimeBurned || 0);
-      const nextBalance = Decimal.max(0, currentBalance.minus(amountToBurn));
-      const nextBurned = currentBurned.plus(amountToBurn);
+      if (
+        !currentHold ||
+        currentHold.status !== HoldStatus.ACTIVE ||
+        currentHold.expiresAt <= new Date()
+      ) {
+        return { success: false, burnedCoins: 0 };
+      }
 
+      const amountToBurn = roundCoinAmount(currentHold.amount);
+
+      // 3. Apply state transition via shared pure fold rule
+      const nextTotals = applyEntryToTotals(
+        {
+          balance: new Decimal(current.balance || 0),
+          lifetimeEarned: new Decimal(current.lifetimeEarned || 0),
+          lifetimeBurned: new Decimal(current.lifetimeBurned || 0),
+        },
+        {
+          action: CoinLedgerAction.HOLD_BURNED,
+          amount: amountToBurn.negated(),
+          metadata: {
+            bookingId,
+            nairaValue: Number(currentHold.nairaValue),
+          },
+        },
+      );
+
+      // 4. Update locked balance row
       await tx.coinBalance.update({
-        where: { userId: hold.userId },
+        where: { userId: currentHold.userId },
         data: {
-          balance: nextBalance,
-          lifetimeBurned: nextBurned,
+          balance: nextTotals.balance,
+          lifetimeBurned: nextTotals.lifetimeBurned,
           version: { increment: 1 },
         },
       });
 
+      // 5. Update hold status
       await tx.coinHold.update({
-        where: { id: hold.id },
+        where: { id: currentHold.id },
         data: { status: HoldStatus.BURNED },
       });
 
+      // 6. Create immutable append-only ledger entry
       await tx.coinLedgerEntry.create({
         data: {
-          userId: hold.userId,
+          userId: currentHold.userId,
           action: CoinLedgerAction.HOLD_BURNED,
           amount: amountToBurn.negated(),
-          balanceAfter: nextBalance,
+          balanceAfter: nextTotals.balance,
           referenceType: "BOOKING",
           referenceId: bookingId,
           idempotencyKey: `burn_hold_${bookingId}`,
           metadata: {
             bookingId,
-            nairaValue: Number(hold.nairaValue),
+            nairaValue: Number(currentHold.nairaValue),
           },
         },
       });
 
-      return { success: true, burnedCoins: Number(amountToBurn) };
+      return { success: true, burnedCoins: toCoinNumber(amountToBurn) };
     };
 
     if (externalTx) {
@@ -529,6 +631,14 @@ export class CoinService {
     });
 
     if (!booking || !booking.user) {
+      return { coinsAwarded: 0 };
+    }
+
+    const idempotencyKey = `booking_earn_${booking.id}`;
+    const existingEntry = await prisma.coinLedgerEntry.findUnique({
+      where: { idempotencyKey },
+    });
+    if (existingEntry) {
       return { coinsAwarded: 0 };
     }
 
@@ -561,7 +671,6 @@ export class CoinService {
       return { coinsAwarded: 0 };
     }
 
-    const idempotencyKey = `booking_earn_${booking.id}`;
     const result = await this.creditCoins({
       userId: booking.userId,
       action: CoinLedgerAction.BOOKING_EARN,
@@ -765,33 +874,85 @@ export class CoinService {
 
   /**
    * Claws back earned coins from customer on booking refund.
+   * Looks up all earn entries (base + bonus + tier) for the booking, subtracts prior clawbacks,
+   * and requests net clawback with requestedAmount stored in metadata to close tier loophole.
    */
   async clawbackEarnedCoins(
     bookingId: string,
     coinsToClawback: number | Decimal,
     externalTx?: Prisma.TransactionClient,
   ): Promise<void> {
-    const amount = new Decimal(coinsToClawback);
-    if (amount.isZero() || amount.isNegative()) return;
-
-    const booking = await prisma.booking.findUnique({
+    const tx = externalTx || prisma;
+    const booking = await tx.booking.findUnique({
       where: { id: bookingId },
-      select: { userId: true, reference: true },
+      select: { id: true, userId: true, reference: true },
     });
 
     if (!booking) return;
+
+    const bookingRefs = [booking.id, booking.reference].filter(
+      Boolean,
+    ) as string[];
+
+    const earnEntries = await tx.coinLedgerEntry.findMany({
+      where: {
+        userId: booking.userId,
+        referenceType: "BOOKING",
+        referenceId: { in: bookingRefs },
+        action: CoinLedgerAction.BOOKING_EARN,
+      },
+    });
+
+    const totalEarnedForBooking = earnEntries.reduce(
+      (sum, e) => sum.plus(roundCoinAmount(e.amount)),
+      new Decimal(0),
+    );
+
+    const priorClawbacks = await tx.coinLedgerEntry.findMany({
+      where: {
+        userId: booking.userId,
+        referenceType: "BOOKING",
+        referenceId: { in: bookingRefs },
+        action: CoinLedgerAction.REFUND_CLAWBACK,
+      },
+    });
+
+    const totalPriorClawedBack = priorClawbacks.reduce((sum, e) => {
+      const req =
+        e.metadata &&
+        typeof e.metadata === "object" &&
+        "requestedAmount" in (e.metadata as any)
+          ? new Decimal((e.metadata as any).requestedAmount)
+          : roundCoinAmount(e.amount).abs();
+      return sum.plus(req);
+    }, new Decimal(0));
+
+    const remainingEarned = Decimal.max(
+      0,
+      totalEarnedForBooking.minus(totalPriorClawedBack),
+    );
+    const requestedAmount = Decimal.min(
+      roundCoinAmount(coinsToClawback),
+      remainingEarned,
+    );
+
+    if (!requestedAmount.greaterThan(0)) {
+      return;
+    }
 
     await this.debitCoins(
       {
         userId: booking.userId,
         action: CoinLedgerAction.REFUND_CLAWBACK,
-        amount,
+        amount: requestedAmount,
         referenceType: "BOOKING",
         referenceId: bookingId,
         idempotencyKey: `clawback_customer_${bookingId}`,
         metadata: {
           bookingReference: booking.reference,
+          bookingId: booking.id,
           reason: "BOOKING_REFUND",
+          requestedAmount: requestedAmount.toFixed(2),
         },
       },
       externalTx,
@@ -819,9 +980,12 @@ export class CoinService {
 
     if (!originalBonusEntry) return;
 
-    const originalAward = Number(originalBonusEntry.amount);
-    const amountToClawback = Math.min(Number(coinsToClawback), originalAward);
-    if (amountToClawback <= 0) return;
+    const originalAward = roundCoinAmount(originalBonusEntry.amount);
+    const amountToClawback = Decimal.min(
+      roundCoinAmount(coinsToClawback),
+      originalAward,
+    );
+    if (!amountToClawback.greaterThan(0)) return;
 
     const refereeUserId = (originalBonusEntry.metadata as any)?.refereeUserId;
 
@@ -837,8 +1001,8 @@ export class CoinService {
           bookingId,
           reason: "REFERRAL_BOOKING_REFUND",
           refereeUserId,
-          originalAward,
-          clawedBackAmount: amountToClawback,
+          originalAward: toCoinNumber(originalAward),
+          requestedAmount: amountToClawback.toFixed(2),
         },
       },
       externalTx,

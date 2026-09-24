@@ -1,13 +1,17 @@
 "use client";
 
-import React from "react";
-import {
-  Users,
-  UserCheck,
-  UserPlus,
-  TrendingUp,
-  DollarSign,
-} from "lucide-react";
+import { Users, UserCheck, UserPlus, TrendingUp } from "lucide-react";
+
+const NairaIcon: React.FC<{ className?: string }> = ({
+  className = "w-5 h-5",
+}) => (
+  <span
+    aria-hidden="true"
+    className={`font-extrabold text-base leading-none select-none flex items-center justify-center ${className}`}
+  >
+    ₦
+  </span>
+);
 
 export interface MemberMetricsProps {
   totalMembers?: number;
@@ -20,8 +24,10 @@ export const MemberMetricsGrid: React.FC<MemberMetricsProps> = ({
   totalMembers = 1248,
   activeNow = 156,
   newThisMonth = 42,
-  mrrGrowth = "$24.5k",
+  mrrGrowth = "₦24.5k",
 }) => {
+  const normalizedGrowth = mrrGrowth.replace(/^\$/, "₦");
+
   const metrics = [
     {
       label: "Total Members",
@@ -46,10 +52,10 @@ export const MemberMetricsGrid: React.FC<MemberMetricsProps> = ({
     },
     {
       label: "Subscription Growth",
-      value: mrrGrowth,
+      value: normalizedGrowth,
       change: "MRR increase",
       isPositive: true,
-      icon: DollarSign,
+      icon: NairaIcon,
     },
   ];
 

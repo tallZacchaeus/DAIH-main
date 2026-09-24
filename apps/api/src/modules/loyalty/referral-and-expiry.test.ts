@@ -161,9 +161,6 @@ vi.mock("../../db/client.js", () => {
         return null;
       }),
     },
-    loyaltyWallet: {
-      upsert: vi.fn(async () => ({})),
-    },
     transaction: {
       findMany: vi.fn(async ({ where }: any) => {
         return store.transactions.filter((t) => {
