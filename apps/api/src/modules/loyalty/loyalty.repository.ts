@@ -25,42 +25,68 @@ import {
 const SETTINGS_CACHE_KEY = "daih:loyalty_settings";
 const SETTINGS_CACHE_TTL = 300; // 5 minutes
 
+/**
+ * Default PeeDee Coin programme configuration.
+ *
+ * These are the values approved by the Product Owner and Finance, not
+ * placeholders. `ensureDefaultSettings()` writes every field below
+ * explicitly, so this constant — not the column defaults in schema.prisma —
+ * governs what a fresh environment starts with. Keep the two in step.
+ *
+ * Reference: docs/DAIH_Deployment_Runbook.md
+ */
 export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettingsRecord = {
   id: "default",
   isProgramActive: true,
-  coinName: "PD Coin",
-  coinSymbol: "PDC",
+  coinName: "PeeDee Coin",
+  coinSymbol: "PD",
+
+  // Earning: 1 PD per NGN 200 spent = 0.5% back.
   isTransactionRewardEnabled: true,
   formulaMode: "SPEND_RATIO",
-  spendRatioNgn: 100,
-  percentageRate: 1.0,
+  spendRatioNgn: 200,
+  percentageRate: 0.5,
   fixedAmountCoins: 50,
   minSpendThreshold: 500,
   maxCoinsPerTransaction: null,
-  isReferralRewardEnabled: false, // OFF by default
-  coinsPerActiveReferral: 100,
-  refereeWelcomeBonus: 0, // 0 by default
-  isRedemptionEnabled: true,
-  redemptionRateCoins: 100,
-  redemptionRateNgn: 100, // 100 PDC = 100 NGN (1:1)
-  minCoinsToRedeem: 100,
-  maxDiscountPercent: 50,
-  isBirthdayBonusEnabled: true,
-  birthdayBonusCoins: 500,
-  isStreakBonusEnabled: true,
-  streakBonusCoins: 200,
-  streakThresholdCount: 3,
-  streakWindowDays: 30,
-  isSignupBonusEnabled: true,
-  signupBonusCoins: 500,
-  isExpiryEnabled: true,
-  expiryMonths: 12,
+
+  // Referral: percentage of referee spend across a 90-day window.
+  //
+  // coinsPerActiveReferral MUST stay 0. It drives the legacy flat-bonus path
+  // in loyalty.service.ts, gated only on `> 0`, which pays out alongside the
+  // percentage award in coin.service.ts and double-pays every referral. The
+  // percentage path is the one honouring floor, cap and window.
+  isReferralRewardEnabled: true,
+  coinsPerActiveReferral: 0,
+  refereeWelcomeBonus: 200,
   referralRewardPercent: 5.0,
   referralFloorCoins: 50,
   referralCapCoins: 1000,
   referralWindowDays: 90,
+
+  // Redemption: 1 PD = NGN 1, up to half of any booking.
+  isRedemptionEnabled: true,
+  redemptionRateCoins: 100,
+  redemptionRateNgn: 100,
+  minCoinsToRedeem: 100,
+  maxDiscountPercent: 50,
+
+  // Fixed bonuses.
+  isSignupBonusEnabled: true,
+  signupBonusCoins: 20,
+  isBirthdayBonusEnabled: true,
+  birthdayBonusCoins: 50,
+  isStreakBonusEnabled: true,
+  streakBonusCoins: 30,
+  streakThresholdCount: 4,
+  streakWindowDays: 30,
+
+  // Lifecycle and risk controls.
+  isExpiryEnabled: true,
+  expiryMonths: 12,
   dailyAdjustmentLimitCoins: 20000,
   holdExpiryMinutes: 15,
+
   updatedAt: new Date().toISOString(),
   updatedBy: null,
 };

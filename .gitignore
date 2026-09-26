@@ -39,3 +39,4 @@ coverage/
 # Local media & runtime uploads
 uploads/
 **/uploads/
+archive/
