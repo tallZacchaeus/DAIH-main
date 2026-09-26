@@ -12,15 +12,15 @@
 
 None of these can be done from a development machine. Gather them first; a half-provisioned deploy is worse than none.
 
-| # | Item | Notes |
-| --- | --- | --- |
-| 1 | **Hostinger KVM VPS** | KVM 2 minimum (2 vCPU / 8 GB). Next.js builds four apps; 4 GB will swap-thrash |
-| 2 | **Root SSH access** | IP address, root password or key |
-| 3 | **Domain `daih.ng`** | Registered, and nameservers pointed at Cloudflare |
-| 4 | **Cloudflare account** | Zone added for `daih.ng` |
-| 5 | **Paystack live keys** | `sk_live_…`, `pk_live_…`, and the webhook secret from the Paystack dashboard |
-| 6 | **Resend account** | API key, plus `daih.ng` verified as a sending domain (SPF/DKIM records) |
-| 7 | **Sentry DSN** | Optional but recommended before taking real bookings |
+| #   | Item                   | Notes                                                                          |
+| --- | ---------------------- | ------------------------------------------------------------------------------ |
+| 1   | **Hostinger KVM VPS**  | KVM 2 minimum (2 vCPU / 8 GB). Next.js builds four apps; 4 GB will swap-thrash |
+| 2   | **Root SSH access**    | IP address, root password or key                                               |
+| 3   | **Domain `daih.ng`**   | Registered, and nameservers pointed at Cloudflare                              |
+| 4   | **Cloudflare account** | Zone added for `daih.ng`                                                       |
+| 5   | **Paystack live keys** | `sk_live_…`, `pk_live_…`, and the webhook secret from the Paystack dashboard   |
+| 6   | **Resend account**     | API key, plus `daih.ng` verified as a sending domain (SPF/DKIM records)        |
+| 7   | **Sentry DSN**         | Optional but recommended before taking real bookings                           |
 
 **Do not proceed past Phase 3 without items 5 and 6.** The app starts without them, but payments fail and no verification emails send — customers can register and then be stuck.
 
@@ -30,14 +30,14 @@ None of these can be done from a development machine. Gather them first; a half-
 
 In Cloudflare, add six `A` records pointing at your VPS IP, all **Proxied**:
 
-| Record | Host | Serves |
-| --- | --- | --- |
-| A | `@` | Marketing site (port 3000) |
-| A | `www` | Marketing site |
-| A | `app` | Customer PWA (port 3001) |
-| A | `kiosk` | Reception app (port 3002) |
-| A | `admin` | Admin portal (port 3003) |
-| A | `api` | Backend API (port 4000) |
+| Record | Host    | Serves                     |
+| ------ | ------- | -------------------------- |
+| A      | `@`     | Marketing site (port 3000) |
+| A      | `www`   | Marketing site             |
+| A      | `app`   | Customer PWA (port 3001)   |
+| A      | `kiosk` | Reception app (port 3002)  |
+| A      | `admin` | Admin portal (port 3003)   |
+| A      | `api`   | Backend API (port 4000)    |
 
 Set SSL/TLS mode to **Full (strict)**.
 
@@ -108,18 +108,18 @@ done
 
 Paste those five into `.env`, then set by hand:
 
-| Variable | Value |
-| --- | --- |
-| `NODE_ENV` | `production` |
-| `DATABASE_URL` | with your new Postgres password |
-| `COOKIE_DOMAIN` | `.daih.ng` |
-| `COOKIE_SECURE` | `true` |
-| `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | your real first admin — change the password after first login |
-| `PAYSTACK_SECRET_KEY` / `PAYSTACK_PUBLIC_KEY` / `PAYSTACK_WEBHOOK_SECRET` | live values |
-| `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | live values |
-| `EMAIL_PROVIDER` | `resend` |
-| `GOOGLE_CLIENT_ID` / `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | from Google Cloud Console → Credentials → OAuth 2.0 Client IDs. No client secret — this is the ID-token flow |
-| `SENTRY_DSN` | if using Sentry |
+| Variable                                                                  | Value                                                                                                        |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `NODE_ENV`                                                                | `production`                                                                                                 |
+| `DATABASE_URL`                                                            | with your new Postgres password                                                                              |
+| `COOKIE_DOMAIN`                                                           | `.daih.ng`                                                                                                   |
+| `COOKIE_SECURE`                                                           | `true`                                                                                                       |
+| `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD`                              | your real first admin — change the password after first login                                                |
+| `PAYSTACK_SECRET_KEY` / `PAYSTACK_PUBLIC_KEY` / `PAYSTACK_WEBHOOK_SECRET` | live values                                                                                                  |
+| `RESEND_API_KEY` / `RESEND_FROM_EMAIL`                                    | live values                                                                                                  |
+| `EMAIL_PROVIDER`                                                          | `resend`                                                                                                     |
+| `GOOGLE_CLIENT_ID` / `NEXT_PUBLIC_GOOGLE_CLIENT_ID`                       | from Google Cloud Console → Credentials → OAuth 2.0 Client IDs. No client secret — this is the ID-token flow |
+| `SENTRY_DSN`                                                              | if using Sentry                                                                                              |
 
 **Verify:** `grep -c "replace-with\|xxx\|YOUR_" .env` returns **0**. Any remaining placeholder is a bug waiting to surface in production.
 
@@ -215,16 +215,16 @@ https://api.daih.ng/api/v1/payments/webhook
 
 Run these against the live site, in order. Each depends on the previous.
 
-| # | Test | Confirms |
-| --- | --- | --- |
-| 1 | Register a real customer account | Database writes, Client ID allocation |
-| 2 | Receive the verification email | Resend, DNS records, templates |
-| 3 | Log in, reach the dashboard | JWT, refresh cookie, cookie domain |
-| 4 | Book a resource, pay with a real card | Paystack live, webhook, invoice |
-| 5 | Open the QR screen | QR signing secret |
-| 6 | Scan it in the kiosk app, check in | Access module, visit session |
-| 7 | Log into the admin portal, find the booking | RBAC, admin queries |
-| 8 | Issue a refund from Finance | Refund path, audit log |
+| #   | Test                                        | Confirms                              |
+| --- | ------------------------------------------- | ------------------------------------- |
+| 1   | Register a real customer account            | Database writes, Client ID allocation |
+| 2   | Receive the verification email              | Resend, DNS records, templates        |
+| 3   | Log in, reach the dashboard                 | JWT, refresh cookie, cookie domain    |
+| 4   | Book a resource, pay with a real card       | Paystack live, webhook, invoice       |
+| 5   | Open the QR screen                          | QR signing secret                     |
+| 6   | Scan it in the kiosk app, check in          | Access module, visit session          |
+| 7   | Log into the admin portal, find the booking | RBAC, admin queries                   |
+| 8   | Issue a refund from Finance                 | Refund path, audit log                |
 
 Do **1 through 4 with a real card and a small amount** before opening to customers. A live Paystack key that is misconfigured fails only at the moment a customer tries to pay.
 
@@ -253,16 +253,16 @@ docker exec daih-postgres pg_dump -U postgres daih_db > ~/daih-$(date +%F-%H%M).
 
 Verified against commit `bc981ec` on 2026-09-26.
 
-| Check | Result |
-| --- | --- |
-| Install (frozen lockfile) | ✅ |
-| Typecheck | ✅ 9/9 workspaces |
-| Monorepo build | ✅ 6/6 tasks |
-| Tests | ✅ 321 passed, 0 failed, 10 skipped |
-| Migration chain on empty DB | ✅ 8/8 applied · 39 tables · 23 enums · zero drift |
-| Seeds | ✅ 12 templates · approved loyalty config · Super Admin `DAIH-2026-000001` |
-| Fresh env self-configures without seed | ✅ 0.5% earn · 20/50/30 bonuses · referrals on · legacy flat pinned to 0 |
-| MinIO container | ❌ image pull denied — excluded, not required |
+| Check                                  | Result                                                                     |
+| -------------------------------------- | -------------------------------------------------------------------------- |
+| Install (frozen lockfile)              | ✅                                                                         |
+| Typecheck                              | ✅ 9/9 workspaces                                                          |
+| Monorepo build                         | ✅ 6/6 tasks                                                               |
+| Tests                                  | ✅ 321 passed, 0 failed, 10 skipped                                        |
+| Migration chain on empty DB            | ✅ 8/8 applied · 39 tables · 23 enums · zero drift                         |
+| Seeds                                  | ✅ 12 templates · approved loyalty config · Super Admin `DAIH-2026-000001` |
+| Fresh env self-configures without seed | ✅ 0.5% earn · 20/50/30 bonuses · referrals on · legacy flat pinned to 0   |
+| MinIO container                        | ❌ image pull denied — excluded, not required                              |
 
 **Not verifiable from a development machine:** live Paystack payments, real email
 delivery through Resend, Google OAuth callbacks, and TLS. All four are covered by
