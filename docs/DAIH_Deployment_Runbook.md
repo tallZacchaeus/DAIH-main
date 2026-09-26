@@ -142,12 +142,18 @@ pnpm --filter @daih/api run seed:admin       # first Super Administrator
 
 **Verify:** the admin seed prints a Client ID in the form `DAIH-2026-000001`, and the loyalty seed prints `earn 1 PD per NGN 200 (0.5%)`.
 
-> **Run `seed:loyalty` before starting the app in Phase 6.** The API creates a
-> `loyalty_settings` row on first use with the column defaults — 1% earn, 500 PD
-> signup, 500 PD birthday, referrals disabled — which is roughly four times the
-> approved run-rate and switches off the referral programme. The seed refuses to
-> overwrite an existing row, so if the app boots first you must re-run it with
-> `-- --force`.
+> **About `seed:loyalty`.** The API creates a `loyalty_settings` row on first
+> use. Both that code path and the column defaults now carry the approved
+> configuration, so a fresh environment is correct even if this seed never runs
+> — verified by wiping the database, migrating, and letting the app create the
+> row unaided.
+>
+> The seed remains the explicit, documented write, and the repair tool for any
+> environment that already holds a wrong row (a database created before
+> `20260926120000_align_loyalty_defaults_with_approved_config`). It will not
+> overwrite an existing row unless passed `-- --force`. On a **live** system,
+> change settings through Finance → Loyalty in the admin portal instead, so the
+> change is audit-logged against a named person.
 
 > Use `prisma:migrate:deploy`, never `db push`. The chain starts at
 > `20260901000000_init` and runs through six further migrations covering auth
@@ -253,8 +259,9 @@ Verified against commit `bc981ec` on 2026-09-26.
 | Typecheck | ✅ 9/9 workspaces |
 | Monorepo build | ✅ 6/6 tasks |
 | Tests | ✅ 321 passed, 0 failed, 10 skipped |
-| Migration chain on empty DB | ✅ 7/7 applied · 39 tables · 23 enums · zero drift |
+| Migration chain on empty DB | ✅ 8/8 applied · 39 tables · 23 enums · zero drift |
 | Seeds | ✅ 12 templates · approved loyalty config · Super Admin `DAIH-2026-000001` |
+| Fresh env self-configures without seed | ✅ 0.5% earn · 20/50/30 bonuses · referrals on · legacy flat pinned to 0 |
 | MinIO container | ❌ image pull denied — excluded, not required |
 
 **Not verifiable from a development machine:** live Paystack payments, real email
