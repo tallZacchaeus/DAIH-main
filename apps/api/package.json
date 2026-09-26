@@ -20,6 +20,7 @@
     "seed:admin": "tsx src/scripts/seed-super-admin.ts",
     "create:admin": "tsx src/scripts/create-admin.ts",
     "seed:templates": "tsx src/db/seeds/email-templates.seed.ts",
+    "seed:loyalty": "tsx src/db/seeds/loyalty-settings.seed.ts",
     "ledger:reconcile": "tsx src/scripts/reconcile-ledger.ts"
   },
   "dependencies": {

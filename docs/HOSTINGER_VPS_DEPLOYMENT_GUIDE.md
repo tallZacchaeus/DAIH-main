@@ -304,7 +304,7 @@ server {
 
 # 3. Reception & Gate Kiosk (Port 3002)
 server {
-    server_name kiosk.daih.ng reception.daih.ng;
+    server_name kiosk.daih.ng;
     client_max_body_size 15M;
 
     location / {
